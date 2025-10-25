@@ -35,8 +35,3 @@ Follow these steps to set up your local development environment.
     ```bash
     pip install -r requirements.txt
     ```
-
-### 3. Environment Variables
-
-Create a `.env` file in the root directory to store API keys and database credentials (Dont commit to git)
-```
