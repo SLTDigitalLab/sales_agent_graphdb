@@ -10,9 +10,7 @@ Follow these steps to set up your local development environment.
 
 ### 1. Prerequisites
 
-* **Python:** This project requires **Python 3.10 or newer**. 
-
-* **Neo4j Desktop:** A running Neo4j database instance is required for the knowledge graph.
+* **Python:** Requires **Python 3.10 or newer**. 
 
 ### 2. Environment Setup
 
