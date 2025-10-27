@@ -1,4 +1,3 @@
-import os
 import csv
 from neo4j import GraphDatabase
 
@@ -9,9 +8,7 @@ NEO4J_USER = "neo4j"
 
 NEO4J_PASSWORD = "mIH7T8grFTv7RqaYh1xUIW2Rf8NWjY743b656OruI7g"
 
-script_dir = os.path.dirname(__file__)
-
-CSV_FILE = os.path.join(script_dir, '..', 'data', 'products.csv')
+CSV_FILE = "products.csv"
 
 class Neo4jIngestor:
     def __init__(self, uri, user, password):
