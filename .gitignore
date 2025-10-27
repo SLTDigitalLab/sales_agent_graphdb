@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv
+venv/
+.env/
+
+# Playwright / Browser cache
+playwright/.cache/
+node_modules/
+
+# Data outputs
+data/*.json
+
+# System files
+.DS_Store
+
+# VS Code / Visual Studio files
+.vscode/
+.idea/
+
+# Logs and other generated files
+*.log
+*.sqlite3
