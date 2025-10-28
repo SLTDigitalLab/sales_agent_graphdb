@@ -8,3 +8,4 @@ __pycache__/
 .vscode/
 .idea/
 data/*.json
+chroma_data/
