@@ -5,7 +5,7 @@ from scrapers.youtube_scraper import YouTubeScraper
 if __name__ == "__main__":
     print("Starting Data Collection...")
 
-    website_url = "https://www.slt.lk"
+    website_url = "https://www.slt.lk/home"
     ws = WebsiteScraper(website_url)
     ws.scrape()
 

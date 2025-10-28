@@ -1,7 +1,8 @@
 import os
 import json
 from dotenv import load_dotenv
-from chromadb import Client
+from chromadb import PersistentClient  # <--- CHANGE: Imported PersistentClient
+import chromadb # <--- CHANGE: Imported chromadb
 from chromadb.utils import embedding_functions
 
 load_dotenv()
@@ -11,7 +12,9 @@ class ChromaVectorStore:
     def __init__(self, persist_directory="chroma_data"):
         os.makedirs(persist_directory, exist_ok=True)
 
-        self.client = Client()
+        # <--- CHANGE: Switched to PersistentClient to save data to disk
+        self.client = chromadb.PersistentClient(path=persist_directory) 
+        
         self.embedding_func = embedding_functions.OpenAIEmbeddingFunction(
             api_key=os.getenv("OPENAI_API_KEY"), 
             model_name="text-embedding-3-small"
@@ -27,31 +30,51 @@ class ChromaVectorStore:
             print(f"File not found: {file_path}")
             return []
 
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print(f"Error: Could not decode JSON from {file_path}. File might be empty or corrupt.")
+            return []
 
     def ingest_data(self, data_list, source):
         if not data_list:
             print(f"No data found for {source}. Skipping.")
             return
 
-        print(f"Ingesting {len(data_list)} {source} entries into ChromaDB...")
+        print(f"Preparing {len(data_list)} {source} entries for ChromaDB...")
+
+        # <--- CHANGE: Create lists for batch ingestion
+        documents_batch = []
+        metadatas_batch = []
+        ids_batch = []
 
         for i, entry in enumerate(data_list):
             if isinstance(entry, dict):
                 text = entry.get("text") or entry.get("title") or entry.get("description")
             else:
-                text=str(entry)
+                text = str(entry)
+            
             if not text:
+                print(f"Skipping entry {i} from {source} due to missing text.")
                 continue
 
-            self.collection.add(
-                ids=[f"{source}_{i}"],
-                documents=[text],
-                metadatas=[{"source": source}]
-            )
+            # <--- CHANGE: Add to batch lists instead of calling self.collection.add
+            documents_batch.append(text)
+            metadatas_batch.append({"source": source})
+            ids_batch.append(f"{source}_{i}")
 
-        print(f"{source} data successfully stored in ChromaDB!")
+        # <--- CHANGE: Add all documents in one single batch after the loop
+        if documents_batch:
+            print(f"Ingesting {len(documents_batch)} documents from {source} into ChromaDB...")
+            self.collection.add(
+                ids=ids_batch,
+                documents=documents_batch,
+                metadatas=metadatas_batch
+            )
+            print(f"{source} data successfully stored in ChromaDB!")
+        else:
+            print(f"No valid documents found to ingest for {source}.")
 
     def query_similar(self, query_text, n_results=3):
         results = self.collection.query(
@@ -62,11 +85,12 @@ class ChromaVectorStore:
 
 
 if __name__ == "__main__":
-    store = ChromaVectorStore()
+    # The persist_directory name must match the one in __init__
+    store = ChromaVectorStore(persist_directory="chroma_data") 
 
-    website_json = store.load_json_data("data/website_data.json")
-    facebook_json = store.load_json_data("data/facebook_data.json")
-    youtube_json = store.load_json_data("data/youtube_data.json")
+    website_json = store.load_json_data("../data/website_data.json")
+    facebook_json = store.load_json_data("../data/facebook_data.json")
+    youtube_json = store.load_json_data("../data/youtube_data.json")
 
     website_data = website_json.get("data", []) if isinstance(website_json, dict) else website_json
     facebook_data = facebook_json.get("data", []) if isinstance(facebook_json, dict) else facebook_json
@@ -76,9 +100,14 @@ if __name__ == "__main__":
     store.ingest_data(facebook_data, "facebook")
     store.ingest_data(youtube_data, "youtube")
 
-    print("\n Testing semantic search...")
+    # <--- CHANGE: Added a final count to confirm persistence
+    total_items = store.collection.count()
+    print(f"\n--- Ingestion Complete ---")
+    print(f"Total items in ChromaDB: {total_items}")
+    print("Database is now saved in the 'chroma_data' folder.")
+
+    print("\nTesting semantic search...")
     query = "broadband internet speed"
     results = store.query_similar(query)
+    print("Query results:")
     print(results)
-
-   
