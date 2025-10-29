@@ -1,8 +1,8 @@
 import os
 import json
 from dotenv import load_dotenv
-from chromadb import PersistentClient  # <--- CHANGE: Imported PersistentClient
-import chromadb # <--- CHANGE: Imported chromadb
+from chromadb import PersistentClient
+import chromadb
 from chromadb.utils import embedding_functions
 
 load_dotenv()
@@ -10,10 +10,13 @@ load_dotenv()
 
 class ChromaVectorStore:
     def __init__(self, persist_directory="chroma_data"):
-        os.makedirs(persist_directory, exist_ok=True)
+        script_dir = os.path.dirname(__file__)
+        project_root = os.path.join(script_dir, '..')
+        self.persist_directory_path = os.path.join(project_root, persist_directory)
+        
+        os.makedirs(self.persist_directory_path, exist_ok=True)
 
-        # <--- CHANGE: Switched to PersistentClient to save data to disk
-        self.client = chromadb.PersistentClient(path=persist_directory) 
+        self.client = chromadb.PersistentClient(path=self.persist_directory_path) 
         
         self.embedding_func = embedding_functions.OpenAIEmbeddingFunction(
             api_key=os.getenv("OPENAI_API_KEY"), 
@@ -44,27 +47,24 @@ class ChromaVectorStore:
 
         print(f"Preparing {len(data_list)} {source} entries for ChromaDB...")
 
-        # <--- CHANGE: Create lists for batch ingestion
         documents_batch = []
         metadatas_batch = []
         ids_batch = []
 
         for i, entry in enumerate(data_list):
             if isinstance(entry, dict):
-                text = entry.get("text") or entry.get("title") or entry.get("description")
+                text = entry.get("post_text") or entry.get("text") or entry.get("title") or entry.get("description")
             else:
                 text = str(entry)
             
-            if not text:
-                print(f"Skipping entry {i} from {source} due to missing text.")
+            if not text or text == "Error scraping post details":
+                print(f"Skipping entry {i} from {source} due to missing or error text.")
                 continue
 
-            # <--- CHANGE: Add to batch lists instead of calling self.collection.add
             documents_batch.append(text)
             metadatas_batch.append({"source": source})
             ids_batch.append(f"{source}_{i}")
 
-        # <--- CHANGE: Add all documents in one single batch after the loop
         if documents_batch:
             print(f"Ingesting {len(documents_batch)} documents from {source} into ChromaDB...")
             self.collection.add(
@@ -83,38 +83,38 @@ class ChromaVectorStore:
         )
         return results
 
-
 if __name__ == "__main__":
-    store = ChromaVectorStore(persist_directory="chroma_data")
+    store = ChromaVectorStore(persist_directory="chroma_data") 
 
     script_dir = os.path.dirname(__file__)
     data_dir = os.path.join(script_dir, '..', 'data')
 
+    # Load Website Data
     website_json_path = os.path.join(data_dir, "website_data.json")
-    facebook_json_path = os.path.join(data_dir, "facebook_data.json")
-    youtube_json_path = os.path.join(data_dir, "youtube_data.json")
-
     print(f"Loading website data from: {website_json_path}")
     website_json = store.load_json_data(website_json_path)
-    print(f"Loading facebook data from: {facebook_json_path}")
-    facebook_json = store.load_json_data(facebook_json_path)
-    print(f"Loading youtube data from: {youtube_json_path}")
-    youtube_json = store.load_json_data(youtube_json_path)
+    
+    # Load LinkedIn Data
+    linkedin_json_path = os.path.join(data_dir, "linkedin_data.json")
+    print(f"Loading linkedin data from: {linkedin_json_path}")
+    linkedin_json = store.load_json_data(linkedin_json_path)
 
+    # Skip Facebook and YouTube
+    print("Skipping facebook_data.json and youtube_data.json")
+    
+    # Extract data from loaded JSONs
     website_data = website_json.get("data", []) if isinstance(website_json, dict) else website_json
-    facebook_data = facebook_json.get("data", []) if isinstance(facebook_json, dict) else facebook_json
-    youtube_data = youtube_json.get("data", []) if isinstance(youtube_json, dict) else youtube_json
+    linkedin_data = linkedin_json.get("data", []) if isinstance(linkedin_json, dict) else linkedin_json
 
     # Ingest data from each source
     store.ingest_data(website_data, "website")
-    store.ingest_data(facebook_data, "facebook")
-    store.ingest_data(youtube_data, "youtube")
+    store.ingest_data(linkedin_data, "linkedin")
 
     try:
         total_items = store.collection.count()
         print(f"\n--- Ingestion Complete ---")
         print(f"Total items in ChromaDB collection 'enterprise_data': {total_items}")
-        print(f"Database data is saved in the '{store.client.path}' folder.")
+        print(f"Database data is saved in the '{store.persist_directory_path}' folder.")
     except Exception as e:
         print(f"Error counting items in collection: {e}")
 
