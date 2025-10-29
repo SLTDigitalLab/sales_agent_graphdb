@@ -158,16 +158,20 @@ print("Node 'route_query' defined.")
 # Define Synthesis Node
 
 SYNTHESIS_PROMPT_TEMPLATE = """
-You are an AI assistant tasked with generating a final answer based on retrieved information and the original question.
-Use the provided context (intermediate steps) to answer the user's question accurately.
+You are a helpful AI assistant answering questions based on retrieved information.
+Given the chat history and the latest retrieved context (intermediate steps), formulate a final answer to the user's question.
+Make the answer conversational.
 If the context contains an error message or indicates that the information could not be found, state that clearly.
 Do not make up information.
 If the context includes a price, format it as "Rs. [price]" (e.g., Rs. 11,410.00).
 
-Intermediate Steps Context:
+Chat History:
+{chat_history}
+
+Intermediate Steps Context (if any):
 {intermediate_steps}
 
-Original Question: {question}
+User's Latest Question: {question}
 
 Final Answer:
 """
@@ -180,25 +184,33 @@ print("Synthesis chain created.")
 
 def generate_response(state: AgentState) -> AgentState:
     """
-    Generates the final response to the user based on intermediate steps.
+    Generates the final response using LLM based on chat history and intermediate steps.
     """
     print("---NODE: generate_response---")
     question = state["question"]
     intermediate_steps = state["intermediate_steps"]
+    chat_history = state.get("chat_history", [])
 
     context_str = "\n".join([str(step) for step in intermediate_steps])
+
+    history_str = "\n".join(
+        [f"{msg.type.upper()}: {msg.content}" for msg in chat_history]
+    )
 
     # Run the synthesis chain
     final_answer = synthesis_chain.invoke({
         "question": question,
-        "intermediate_steps": context_str
+        "intermediate_steps": context_str,
+        "chat_history": history_str 
     })
 
     print(f"Generated final answer: {final_answer}")
 
-    return {"generation": final_answer}
+    updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=final_answer)]
 
-print("Node 'generate_response' defined.")
+    return {"generation": final_answer, "chat_history": updated_history}
+
+print("Node 'generate_response' defined.") 
 
 from langgraph.graph import StateGraph, END
 
@@ -248,43 +260,58 @@ app = workflow.compile()
 
 print("Graph compiled successfully!")
 
-# Example Usage 
+# Example Usage with Chat History
+# Example Usage with Chat History using invoke()
 if __name__ == "__main__":
-    print("\n--- Running Graph Example ---")
-    inputs = {"question": "What is the price of the eMark GM4 Mini UPS?"}
-    
-    for output in app.stream(inputs, stream_mode="values"):
-        step_name = list(output.keys())[0]
-        print(f"\nOutput from step '{step_name}':")
-        print(output[step_name])
-        print("-" * 30)
+    print("\n--- Running Graph Conversation Example ---")
 
-    print("\n--- Example Finished ---")
+    # Initialize history (empty for the first turn)
+    current_chat_history = []
 
-    # Example for the vector store path using the placeholder
-    print("\n--- Running Graph Example (Vector Path) ---")
-    inputs_vector = {"question": "Tell me about the company mission"}
-    for output in app.stream(inputs_vector, stream_mode="values"):
-        step_name = list(output.keys())[0]
-        print(f"\nOutput from step '{step_name}':")
-        print(output[step_name])
-        print("-" * 30)
-    print("\n--- Example Finished ---")
+    # --- Turn 1 ---
+    print("\n--- Turn 1 ---")
+    question1 = "What is the price of the eMark GM4 Mini UPS?"
+    inputs1 = {"question": question1, "chat_history": current_chat_history}
 
-    # Test Examples
-    print("\n--- Running Graph Example ---")
-    inputs_vector = {"question": "Which products are in the Security Cameras category?"}
-    for output in app.stream(inputs_vector, stream_mode="values"):
-        step_name = list(output.keys())[0]
-        print(f"\nOutput from step '{step_name}':")
-        print(output[step_name])
-        print("-" * 30)
-    print("\n--- Example Finished ---")
+    print(f"User: {question1}")
+    # Use invoke to get the final state directly
+    final_state1 = app.invoke(inputs1)
 
-    inputs_vector = {"question": "Tell me about wifi routers"}
-    for output in app.stream(inputs_vector, stream_mode="values"):
-        step_name = list(output.keys())[0]
-        print(f"\nOutput from step '{step_name}':")
-        print(output[step_name])
-        print("-" * 30)
-    print("\n--- Example Finished ---")
+    # Extract results from the final state
+    current_chat_history = final_state1.get("chat_history", [])
+    agent_response1 = final_state1.get("generation", "Error: No generation found in final state.")
+    print(f"Agent: {agent_response1}")
+    print("-" * 50)
+
+
+    # --- Turn 2 (Follow-up) ---
+    print("\n--- Turn 2 ---")
+    question2 = "Which category is it in?" # Follow-up question
+    # Pass the updated history from the previous turn
+    inputs2 = {"question": question2, "chat_history": current_chat_history}
+
+    print(f"User: {question2}")
+    # Use invoke again
+    final_state2 = app.invoke(inputs2)
+
+    # Extract results
+    current_chat_history = final_state2.get("chat_history", [])
+    agent_response2 = final_state2.get("generation", "Error: No generation found in final state.")
+    print(f"Agent: {agent_response2}")
+    print("-" * 50)
+
+
+    # --- Turn 3 (Vector Path Example) ---
+    print("\n--- Turn 3 ---")
+    question3 = "Tell me about the company mission"
+    inputs3 = {"question": question3, "chat_history": current_chat_history} # Pass history
+
+    print(f"User: {question3}")
+    final_state3 = app.invoke(inputs3)
+
+    current_chat_history = final_state3.get("chat_history", [])
+    agent_response3 = final_state3.get("generation", "Error: No generation found in final state.")
+    print(f"Agent: {agent_response3}")
+    print("-" * 50)
+
+    print("\n--- Conversation Example Finished ---")

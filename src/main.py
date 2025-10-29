@@ -35,9 +35,3 @@ async def root():
     return {"message": "AI Enterprise Agent API is running!"}
 
 print("FastAPI app created.")
-
-# If you want to run this file directly using `python src/main.py` (less common for FastAPI)
-# you might add this block, but usually we run with uvicorn from the root.
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(api, host="0.0.0.0", port=8000)
