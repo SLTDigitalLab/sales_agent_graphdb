@@ -2,10 +2,12 @@ import os
 from typing import TypedDict, Annotated, List, Union
 from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_neo4j import Neo4jGraph, GraphCypherQAChain
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_community.vectorstores import Chroma
+from langchain_core.runnables import RunnablePassthrough
 
 load_dotenv()
 
@@ -27,9 +29,37 @@ try:
     print("Neo4j schema refreshed.")
 except Exception as e:
     print(f"Error refreshing Neo4j schema: {e}")
-    # if want to exit or continue without schema
-    # exit()
 
+# Initialize ChromaDB Connection 
+print("Connecting to persistent ChromaDB...")
+script_dir = os.path.dirname(__file__)
+project_root = os.path.join(script_dir, '..')
+CHROMA_PERSIST_DIR = os.path.join(project_root, 'chroma_data')
+
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+
+# Initialize the LangChain Chroma vector store
+vector_store = Chroma(
+    collection_name="enterprise_data",
+    embedding_function=embeddings,
+    persist_directory=CHROMA_PERSIST_DIR
+)
+
+# Create a retriever
+retriever = vector_store.as_retriever(
+    search_type="similarity",
+    search_kwargs={"k": 3} 
+)
+print("ChromaDB vector store and retriever initialized.")
+
+# Helper function to format retrieved documents
+def format_docs(docs):
+    """Converts a list of Document objects into a single formatted string."""
+    return "\n\n".join(f"Source: {doc.metadata.get('source', 'unknown')}\nContent: {doc.page_content}" for doc in docs)
+
+vector_retrieval_chain = retriever | format_docs
+
+print("Vector retrieval chain created.")
 
 # Define Agent State
 class AgentState(TypedDict):
@@ -63,12 +93,37 @@ QA_PROMPT = PromptTemplate(
     template=QA_TEMPLATE_TEXT
 )
 
+# Custom Cypher Generation Prompt 
+CYPHER_GENERATION_TEMPLATE = """
+You are an expert Cypher query generator.
+Given a graph schema and a user question, create a Cypher query to retrieve the information.
+Use only the provided relationship types and properties in the schema.
+Do not use any other relationship types or properties that are not provided.
+
+**IMPORTANT:** When filtering on string properties (like 'name'), use the `CONTAINS` operator instead of `=` for a more flexible match.
+For example, if the question is "products in Routers category", generate a query like:
+`MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE c.name CONTAINS 'Routers' RETURN p.name`
+This is better than `c.name = 'Routers'`.
+
+Schema:
+{schema}
+
+Question: {question}
+Cypher Query:
+"""
+
+CYPHER_PROMPT = PromptTemplate(
+    input_variables=["schema", "question"],
+    template=CYPHER_GENERATION_TEMPLATE
+)
+
 neo4j_qa_chain = GraphCypherQAChain.from_llm(
     llm=llm,
     graph=graph,
-    verbose=True, # Set to False for cleaner production output
+    verbose=True, # Set to False later
     allow_dangerous_requests=True,
-    qa_prompt=QA_PROMPT
+    qa_prompt=QA_PROMPT,
+    cypher_prompt=CYPHER_PROMPT
 )
 
 print("Neo4j QA Chain created.")
@@ -95,17 +150,28 @@ def query_graph_db(state: AgentState) -> AgentState:
 
 print("Node 'query_graph_db' defined.")
 
-# Placeholder for Vector DB Node
+# Vector DB Node
 def query_vector_db(state: AgentState) -> AgentState:
     """
-    Placeholder node for querying the vector database (Chroma DB).
+    Queries the vector database (Chroma DB) based on the question.
     """
     print("---NODE: query_vector_db---")
     question = state["question"]
     intermediate_steps = state.get("intermediate_steps", [])
 
-    # Placeholder message
-    intermediate_steps.append({"tool": "vector_db", "result": "Vector DB lookup is not implemented yet."})
+    try:
+        retrieved_docs_str = vector_retrieval_chain.invoke(question)
+        
+        if not retrieved_docs_str:
+             print("Vector DB returned no documents.")
+             intermediate_steps.append({"tool": "vector_db", "result": "No relevant information found in the vector database."})
+        else:
+             print(f"Vector DB retrieved: {retrieved_docs_str[:200]}...")
+             intermediate_steps.append({"tool": "vector_db", "result": retrieved_docs_str})
+
+    except Exception as e:
+        print(f"Error querying Vector DB: {e}")
+        intermediate_steps.append({"tool": "vector_db", "error": str(e)})
 
     return {"intermediate_steps": intermediate_steps}
 
@@ -296,7 +362,7 @@ if __name__ == "__main__":
 
     # Question Turn 3 (Vector Store Example) 
     print("\n--- Turn 3 ---")
-    question3 = "Tell me about the company mission"
+    question3 = "Tell me about latest posts about slt on social media."
     inputs3 = {"question": question3, "chat_history": current_chat_history}
 
     print(f"User: {question3}")
