@@ -239,7 +239,6 @@ def decide_next_node(state: AgentState):
         print("Conditional edge fallback: ending.")
         return END
 
-# Add the conditional edge from the router
 workflow.add_conditional_edges(
     "router",          
     decide_next_node,  
@@ -261,37 +260,31 @@ app = workflow.compile()
 print("Graph compiled successfully!")
 
 # Example Usage with Chat History
-# Example Usage with Chat History using invoke()
 if __name__ == "__main__":
     print("\n--- Running Graph Conversation Example ---")
 
-    # Initialize history (empty for the first turn)
     current_chat_history = []
 
-    # --- Turn 1 ---
+    # Question 01
     print("\n--- Turn 1 ---")
     question1 = "What is the price of the eMark GM4 Mini UPS?"
     inputs1 = {"question": question1, "chat_history": current_chat_history}
 
     print(f"User: {question1}")
-    # Use invoke to get the final state directly
     final_state1 = app.invoke(inputs1)
 
-    # Extract results from the final state
     current_chat_history = final_state1.get("chat_history", [])
     agent_response1 = final_state1.get("generation", "Error: No generation found in final state.")
     print(f"Agent: {agent_response1}")
     print("-" * 50)
 
 
-    # --- Turn 2 (Follow-up) ---
+    # Question 2 (Follow-up)
     print("\n--- Turn 2 ---")
-    question2 = "Which category is it in?" # Follow-up question
-    # Pass the updated history from the previous turn
+    question2 = "Which category is it in?"
     inputs2 = {"question": question2, "chat_history": current_chat_history}
 
     print(f"User: {question2}")
-    # Use invoke again
     final_state2 = app.invoke(inputs2)
 
     # Extract results
@@ -301,10 +294,10 @@ if __name__ == "__main__":
     print("-" * 50)
 
 
-    # --- Turn 3 (Vector Path Example) ---
+    # Question Turn 3 (Vector Store Example) 
     print("\n--- Turn 3 ---")
     question3 = "Tell me about the company mission"
-    inputs3 = {"question": question3, "chat_history": current_chat_history} # Pass history
+    inputs3 = {"question": question3, "chat_history": current_chat_history}
 
     print(f"User: {question3}")
     final_state3 = app.invoke(inputs3)
