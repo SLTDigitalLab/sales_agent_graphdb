@@ -85,29 +85,55 @@ class ChromaVectorStore:
 
 
 if __name__ == "__main__":
-    # The persist_directory name must match the one in __init__
-    store = ChromaVectorStore(persist_directory="chroma_data") 
+    store = ChromaVectorStore(persist_directory="chroma_data")
 
-    website_json = store.load_json_data("../data/website_data.json")
-    facebook_json = store.load_json_data("../data/facebook_data.json")
-    youtube_json = store.load_json_data("../data/youtube_data.json")
+    script_dir = os.path.dirname(__file__)
+    data_dir = os.path.join(script_dir, '..', 'data')
+
+    website_json_path = os.path.join(data_dir, "website_data.json")
+    facebook_json_path = os.path.join(data_dir, "facebook_data.json")
+    youtube_json_path = os.path.join(data_dir, "youtube_data.json")
+
+    print(f"Loading website data from: {website_json_path}")
+    website_json = store.load_json_data(website_json_path)
+    print(f"Loading facebook data from: {facebook_json_path}")
+    facebook_json = store.load_json_data(facebook_json_path)
+    print(f"Loading youtube data from: {youtube_json_path}")
+    youtube_json = store.load_json_data(youtube_json_path)
 
     website_data = website_json.get("data", []) if isinstance(website_json, dict) else website_json
     facebook_data = facebook_json.get("data", []) if isinstance(facebook_json, dict) else facebook_json
     youtube_data = youtube_json.get("data", []) if isinstance(youtube_json, dict) else youtube_json
 
+    # Ingest data from each source
     store.ingest_data(website_data, "website")
     store.ingest_data(facebook_data, "facebook")
     store.ingest_data(youtube_data, "youtube")
 
-    # <--- CHANGE: Added a final count to confirm persistence
-    total_items = store.collection.count()
-    print(f"\n--- Ingestion Complete ---")
-    print(f"Total items in ChromaDB: {total_items}")
-    print("Database is now saved in the 'chroma_data' folder.")
+    try:
+        total_items = store.collection.count()
+        print(f"\n--- Ingestion Complete ---")
+        print(f"Total items in ChromaDB collection 'enterprise_data': {total_items}")
+        print(f"Database data is saved in the '{store.client.path}' folder.")
+    except Exception as e:
+        print(f"Error counting items in collection: {e}")
 
+
+    # Test query
     print("\nTesting semantic search...")
     query = "broadband internet speed"
-    results = store.query_similar(query)
-    print("Query results:")
-    print(results)
+    try:
+        results = store.query_similar(query)
+        print(f"Query results for '{query}':")
+        if results and results.get('documents'):
+             for i, doc in enumerate(results['documents'][0]):
+                 print(f"  Result {i+1}: {doc[:100]}...")
+                 if results.get('metadatas') and results['metadatas'][0][i]:
+                     print(f"    Source: {results['metadatas'][0][i].get('source')}")
+                 if results.get('distances') and results['distances'][0][i] is not None:
+                     print(f"    Distance: {results['distances'][0][i]:.4f}")
+        else:
+            print("  No results found or error in query.")
+
+    except Exception as e:
+        print(f"Error during test query: {e}")
