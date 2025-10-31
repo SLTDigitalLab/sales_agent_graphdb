@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Trash2, Bot, User, Loader2, AlertCircle } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:8000'; // Update this to your FastAPI server URL
+const API_BASE_URL = 'http://localhost:8000'; 
 
 function App() {
   const [messages, setMessages] = useState([]);

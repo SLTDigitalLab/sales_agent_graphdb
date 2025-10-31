@@ -5,7 +5,7 @@ import os
 import time
 from dotenv import load_dotenv
 
-load_dotenv() # Load .env file
+load_dotenv() 
 
 class LinkedInScraper:
     def __init__(self, company_url, max_posts=10):
@@ -21,33 +21,32 @@ class LinkedInScraper:
         page_title = "Unknown LinkedIn Page"
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False) # Keep False for testing
+            browser = p.chromium.launch(headless=False) 
             context = browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             )
             page = context.new_page()
 
             try:
-                # --- Navigate to the MAIN company page ---
+                # Navigate to the MAIN company page 
                 print(f"🔍 Visiting {self.company_url} ...")
                 page.goto(self.company_url, timeout=90000, wait_until='load')
                 page.wait_for_timeout(7000)
-                # --- End Navigation ---
+                # End Navigation
 
-                # --- START: Handle Popup by Clicking Overlay ---
+                # START: Handle Popup by Clicking Overlay
                 print("Checking for modal popup...")
                 try:
-                    # This selector targets the visible overlay div
+                    
                     overlay_selector = 'div.modal__overlay--visible'
                     overlay = page.locator(overlay_selector).first
                     
-                    if overlay.is_visible(timeout=10000): # Wait up to 10s for popup
+                    if overlay.is_visible(timeout=10000): 
                         print("Popup overlay detected. Attempting to click outside (near top-left corner)...")
-                        # Click 10px in from the top-left corner *of the overlay element itself*
-                        # This avoids the center dialog box
+                        
                         overlay.click(position={'x': 10, 'y': 10}, timeout=5000)
                         print("Clicked overlay.")
-                        page.wait_for_timeout(3000) # Wait for dismiss animation
+                        page.wait_for_timeout(3000) 
                         
                         if not overlay.is_visible(timeout=1000):
                             print("Popup appears to be closed.")
@@ -57,11 +56,11 @@ class LinkedInScraper:
                         print("Popup overlay not visible within timeout.")
                 except Exception as e:
                     print(f"Did not find or could not dismiss popup: {e}")
-                # --- END: Handle Popup ---
+               
 
 
                 print("Scrolling down to load posts...")
-                # --- Basic Scrolling ---
+                # Basic Scrolling
                 for i in range(3): 
                     page.mouse.wheel(0, 3000)
                     page.wait_for_timeout(3000)
@@ -70,7 +69,7 @@ class LinkedInScraper:
                 page_title = page.title()
                 print(f"Page title: {page_title}")
 
-                # --- Select Posts ---
+                # Select Posts
                 print("Selecting posts...")
                 # Selector targets the <article> tag with a 'data-activity-urn'
                 post_selector = "article[data-activity-urn]" 
@@ -85,17 +84,13 @@ class LinkedInScraper:
 
                 print(f"Found {len(posts_to_process)} potential post elements to process.")
 
-                # --- Post Processing Loop ---
+                # Post Processing Loop
                 for i, post in enumerate(posts_to_process, start=1):
                      print(f"\n--- Scraping Post {i} ---")
                      post_text = ""
                      timestamp = ""
                      try:
-                         # --- Text Extraction ---
-                         # Targets the <p> tag with data-test-id
                          text_selector = 'p[data-test-id="main-feed-activity-card__commentary"]'
-                         
-                         # Click "…more" button if it exists
                          try:
                              see_more_button = post.locator('button[data-feed-action="see-more-post"]')
                              if see_more_button.is_visible(timeout=1000):
@@ -103,7 +98,7 @@ class LinkedInScraper:
                                  see_more_button.click()
                                  page.wait_for_timeout(500) 
                          except Exception:
-                             pass # Normal if no "see more" button
+                             pass 
 
                          text_elements = post.locator(text_selector).all()
                          if text_elements:
@@ -115,7 +110,6 @@ class LinkedInScraper:
                          if not post_text:
                              print("  Warning: Final extracted text is empty.")
 
-                         # --- Extract timestamp ---
                          try:
                              time_elem = post.locator("span.flex > time").first
                              timestamp = time_elem.inner_text().strip()
@@ -124,7 +118,6 @@ class LinkedInScraper:
                              print(f"  Warning: Could not extract timestamp: {time_e}")
                              timestamp = "" 
 
-                         # --- Save structured post data ---
                          if post_text: 
                              data.append({
                                  "post_number": i,
@@ -137,15 +130,15 @@ class LinkedInScraper:
                              print("  Skipping post - no text extracted.")
 
                      except Exception as e:
-                         print(f"⚠️ Error scraping details for post {i}: {e}")
+                         print(f"Error scraping details for post {i}: {e}")
                          data.append({
                             "post_number": i, "post_text": "Error scraping post details",
                             "page_title": page_title, "source_url": self.company_url, "error": str(e)
                          })
-                # --- End Post Loop ---
+                # End Post Loop
 
             except Exception as page_load_error:
-                 print(f"🚨 CRITICAL ERROR during page load or scraping process: {page_load_error}")
+                 print(f"CRITICAL ERROR during page load or scraping process: {page_load_error}")
                  try: page_title = page.title()
                  except: pass
 
@@ -153,7 +146,7 @@ class LinkedInScraper:
                 print("Closing browser...")
                 browser.close()
 
-        # --- Save data to JSON file ---
+        # Save data to JSON file
         output = {
             "timestamp": datetime.now().isoformat(),
             "page_title": page_title,
@@ -169,11 +162,11 @@ class LinkedInScraper:
 
         return data
 
-# --- Block to run the scraper directly ---
+# Block to run the scraper directly
 if __name__ == "__main__":
     print("--- Running LinkedIn Scraper Directly ---")
     linkedin_url = "https://lk.linkedin.com/company/srilankatelecom"
-    max_posts_to_scrape = 5 # Start with a small number
+    max_posts_to_scrape = 5 
 
     scraper = LinkedInScraper(linkedin_url, max_posts=max_posts_to_scrape)
     scraped_data = scraper.scrape()
