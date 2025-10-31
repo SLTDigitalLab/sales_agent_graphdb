@@ -1,7 +1,6 @@
 import os
 import json
 from dotenv import load_dotenv
-from chromadb import PersistentClient
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -98,9 +97,6 @@ if __name__ == "__main__":
     linkedin_json_path = os.path.join(data_dir, "linkedin_data.json")
     print(f"Loading linkedin data from: {linkedin_json_path}")
     linkedin_json = store.load_json_data(linkedin_json_path)
-
-    # Skip Facebook and YouTube
-    print("Skipping facebook_data.json and youtube_data.json")
     
     # Extract data from loaded JSONs
     website_data = website_json.get("data", []) if isinstance(website_json, dict) else website_json
