@@ -62,7 +62,7 @@ try:
     )
     print("Chain created successfully.")
 
-    # --- Questions ---
+    # Test questions
     print("\n--- Asking question ---")
     question = "What is the price of the eMark GM4 Mini UPS?"
     

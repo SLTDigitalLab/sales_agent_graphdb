@@ -4,7 +4,6 @@ from langchain_neo4j import Neo4jGraph
 
 load_dotenv()
 
-# Read the credentials from the loaded environment
 NEO4J_URI = os.getenv("NEO4J_URI")
 NEO4J_USER = os.getenv("NEO4J_USER")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")

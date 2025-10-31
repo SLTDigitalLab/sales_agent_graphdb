@@ -8,8 +8,7 @@ from typing import List, Dict
 from .agent_graph import app as agent_app
 from langchain_core.messages import BaseMessage
 
-# Chat History Storage 
-# Uses a simple in-memory dictionary to store chat histories by session ID. will reset when the server restarts.
+# Chat history storage using a in memory dictionary to store chat histories by session ID. 
 chat_histories: Dict[str, List[BaseMessage]] = {}
 
 #API models
@@ -35,7 +34,7 @@ api = FastAPI(
 
 api.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Vite's default ports
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,13 +44,13 @@ api.add_middleware(
 api.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Vite default dev server
-        "http://localhost:5174",  # Alternative Vite port
-        "http://localhost:3000",  # Alternative React port
+        "http://localhost:5173",  
+        "http://localhost:5174",  
+        "http://localhost:3000",  
     ],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],  
+    allow_headers=["*"],  
 )
 
 @api.post("/chat", response_model=QueryResponse)

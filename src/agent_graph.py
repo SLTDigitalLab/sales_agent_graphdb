@@ -1,5 +1,5 @@
 import os
-from typing import TypedDict, Annotated, List, Union
+from typing import TypedDict, List
 from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -7,7 +7,6 @@ from langchain_neo4j import Neo4jGraph, GraphCypherQAChain
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.vectorstores import Chroma
-from langchain_core.runnables import RunnablePassthrough
 
 load_dotenv()
 
@@ -120,7 +119,7 @@ CYPHER_PROMPT = PromptTemplate(
 neo4j_qa_chain = GraphCypherQAChain.from_llm(
     llm=llm,
     graph=graph,
-    verbose=True, # Set to False later
+    verbose=True,
     allow_dangerous_requests=True,
     qa_prompt=QA_PROMPT,
     cypher_prompt=CYPHER_PROMPT
@@ -360,7 +359,7 @@ if __name__ == "__main__":
     print("-" * 50)
 
 
-    # Question Turn 3 (Vector Store Example) 
+    # Question 3 (Vector Store) 
     print("\n--- Turn 3 ---")
     question3 = "Tell me about latest posts about slt on social media."
     inputs3 = {"question": question3, "chat_history": current_chat_history}

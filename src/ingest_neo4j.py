@@ -1,13 +1,14 @@
 import os
 import csv
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
 
-# neo4j connection details
-NEO4J_URI = "neo4j+s://a48ace4f.databases.neo4j.io"
+load_dotenv()
 
-NEO4J_USER = "neo4j"
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
-NEO4J_PASSWORD = "mIH7T8grFTv7RqaYh1xUIW2Rf8NWjY743b656OruI7g"
 
 script_dir = os.path.dirname(__file__)
 
