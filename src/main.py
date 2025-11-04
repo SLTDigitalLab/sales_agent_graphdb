@@ -2,11 +2,14 @@ from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
 import os
+
 # Importing the state management variables
-from api.services.chat_service import chat_histories 
+from .api.services.chat_service import chat_histories 
 
 # Importing Routers
-from api.routers import v1_chat, db_utils, core 
+from .api.routers import v1_chat, db_utils, core, neo4j_utils
+
+print("FastAPI application initialized and routers included.")
 
 # --- FastAPI Setup and CORS ---
 api = FastAPI(
@@ -34,6 +37,7 @@ api.add_middleware(
 api.include_router(core.router)      # / and /health
 api.include_router(v1_chat.router)   # /v1/chat, /v1/chat/stream, etc.
 api.include_router(db_utils.router)  # /db/vector/raw-chunks
+api.include_router(neo4j_utils.router)  # /db/graph/query, /admin/ingest-neo4j
 
 print("FastAPI application initialized and routers included.")
 
