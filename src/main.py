@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
 import os
 
-# Importing the state management variables
 from .api.services.chat_service import chat_histories 
 
 # Importing Routers
