@@ -4,21 +4,18 @@ import json
 import asyncio
 from fastapi.responses import StreamingResponse
 
-# ⬅️ IMPORT YOUR AGENT FROM THE PARENT DIRECTORY 
-# Assuming agent_graph.py is in the project root
 try:
-    from agent_graph import app as agent_app 
+    from .agent_graph import app as agent_app 
 except ImportError:
-    # Handle the case where the import fails during initial setup
-    print("WARNING: Could not import agent_graph.app. Ensure agent_graph.py is in the project root.")
+    print("WARNING: Could not import agent_graph.app. Ensure agent_graph.py is in src/api/services/")
     agent_app = None
 
 
-# --- Chat History Storage (Centralized) ---
+# chat History Storage
 chat_histories: Dict[str, List[BaseMessage]] = {}
 
 
-# --- Core Logic Functions ---
+# Core Logic Functions
 
 async def stream_chat_generator(session_id: str, question: str):
     """
@@ -33,19 +30,26 @@ async def stream_chat_generator(session_id: str, question: str):
     inputs = {"question": question, "chat_history": current_chat_history}
     final_answer_tokens = []
     
-    # 1. Stream from LangGraph
+    # Stream from LangGraph
     async for chunk in agent_app.astream(inputs, stream_mode="messages"):
         if 'generate' in chunk:
-            message_chunk = chunk['generate'].get('generation')
-            if message_chunk and message_chunk.content:
-                token = message_chunk.content
+            message_content = chunk['generate'].get('generation')
+
+            if isinstance(message_content, AIMessage) and message_content.content:
+                token = message_content.content
+                final_answer_tokens.append(token)
+                yield f"data: {json.dumps({'content': token})}\n\n"
+
+            elif isinstance(message_content, str):
+                token = message_content
                 final_answer_tokens.append(token)
                 yield f"data: {json.dumps({'content': token})}\n\n"
     
-    # 2. Update History (after stream finishes)
+    # Update history
     final_answer = "".join(final_answer_tokens)
-    updated_history = current_chat_history + [HumanMessage(content=question), AIMessage(content=final_answer)]
-    chat_histories[session_id] = updated_history
+    if final_answer:
+        updated_history = current_chat_history + [HumanMessage(content=question), AIMessage(content=final_answer)]
+        chat_histories[session_id] = updated_history
     
     yield f"data: {json.dumps({'content': '[DONE]'})}\n\n"
 
@@ -62,11 +66,9 @@ async def get_full_response(session_id: str, question: str):
     
     final_state = await agent_app.ainvoke(inputs) 
     
-    # Extract data using the confirmed keys
     answer = final_state.get("generation", "Sorry, I couldn't generate a response.")
     updated_history = final_state.get("chat_history", [])
 
-    # Update history
     chat_histories[session_id] = updated_history
     return {"answer": answer}
     
@@ -80,3 +82,5 @@ def clear_session_history(session_id: str):
         return f"History for session {session_id} cleared."
     else:
         return f"No history found for session {session_id}."
+
+print("Chat Service file loaded.")
