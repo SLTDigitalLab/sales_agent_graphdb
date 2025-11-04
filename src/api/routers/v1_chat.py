@@ -4,8 +4,8 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 
 # Importing the service functions and models
-from api.services import chat_service
-from api.routers.core import QueryRequest, QueryResponse, ClearRequest, ClearResponse 
+from ..services import chat_service 
+from .core import QueryRequest, QueryResponse, ClearRequest, ClearResponse
 
 # Define the router with the version prefix and tag
 router = APIRouter(prefix="/v1", tags=["Conversational Agent"])

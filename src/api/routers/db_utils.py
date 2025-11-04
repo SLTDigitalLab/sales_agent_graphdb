@@ -1,19 +1,50 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Any
-import asyncio
+from typing import List
 
-# Importing the service and necessary models
-from api.services import db_service 
-from api.routers.core import SearchRequest, SearchResponse 
+# Import the service functions
+from ..services import db_service 
 
-# Define the router for DB Utilities
+from .core import (
+    VectorQueryRequest, 
+    DbQueryResponse,    
+    RawChunksResponse,  
+    DocumentResult      
+)
+
+
+# Create a new router
 router = APIRouter(prefix="/db", tags=["Database Utilities"])
 
-@router.post("/vector/raw-chunks", response_model=SearchResponse)
-async def semantic_search_raw_chunks(request: SearchRequest):
+# Define API endpoints
+@router.post("/vector/search", response_model=DbQueryResponse)
+async def search_vector_db(query: VectorQueryRequest):
     """
-    Performs a direct semantic search against the Chroma vector store and 
-    returns the raw document chunks with metadata.
+    Receives a natural language question, performs a semantic search,
+    and returns the formatted result as a single string.
+    
+    This is the primary endpoint your agent's 'query_vector_db' node will call.
     """
-    results = await db_service.get_raw_chunks(request.query, request.k)
-    return SearchResponse(results=results)
+    try:
+        # Call the formatted chunk function from the service file
+        answer = await db_service.get_formatted_chunks(query.question, k=query.k)
+        return DbQueryResponse(result=answer)
+    except Exception as e:
+        print(f"Error in /db/vector/search: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/vector/raw-chunks", response_model=RawChunksResponse)
+async def get_vector_chunks(query: VectorQueryRequest):
+    """
+    (Debug Endpoint)
+    Receives a natural language question, performs a semantic search,
+    and returns the raw, unformatted document chunks.
+    """
+    try:
+        # Call the raw chunk function from the service file
+        documents = await db_service.get_raw_chunks(query.question, k=query.k)
+        return RawChunksResponse(results=documents)
+    except Exception as e:
+        print(f"Error in /db/vector/raw-chunks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+print("ChromaDB (db_utils) Router file loaded.")
