@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
+from ..services.db_service import DocumentResult 
 
 # Models for Chat
 class QueryRequest(BaseModel):
@@ -33,17 +34,13 @@ class VectorQueryRequest(BaseModel):
     question: str
     k: int = 3
 
-class DocumentResult(BaseModel):
-    page_content: str
-    metadata: Dict[str, Any]
-
 class RawChunksResponse(BaseModel):
     results: List[DocumentResult]
 
 print("Core API models loaded.")
 
 
-#Define Global/System router
+# Define Global/System Router
 
 router = APIRouter(tags=["Global/System"])
 

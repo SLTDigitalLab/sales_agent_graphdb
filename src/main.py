@@ -10,7 +10,7 @@ from .api.routers import v1_chat, db_utils, core, neo4j_utils
 
 print("FastAPI application initialized and routers included.")
 
-# --- FastAPI Setup and CORS ---
+# FastAPI Setup and CORS
 api = FastAPI(
     title="AI Enterprise Agent API (v1)",
     description="API for interacting with the LangGraph agent."
@@ -31,13 +31,10 @@ api.add_middleware(
     allow_headers=["*"], 
 )
 
-# --- Register Routers ---
-# Note: Routers are registered in main.py, but their logic lives elsewhere.
-api.include_router(core.router)      # / and /health
-api.include_router(v1_chat.router)   # /v1/chat, /v1/chat/stream, etc.
-api.include_router(db_utils.router)  # /db/vector/raw-chunks
-api.include_router(neo4j_utils.router)  # /db/graph/query, /admin/ingest-neo4j
+# Register Routers 
+api.include_router(core.router)      
+api.include_router(v1_chat.router)   
+api.include_router(db_utils.router)  
+api.include_router(neo4j_utils.router)  
 
 print("FastAPI application initialized and routers included.")
-
-# Run with: uvicorn main:api --reload
