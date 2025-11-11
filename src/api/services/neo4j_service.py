@@ -48,10 +48,10 @@ Given a graph schema and a user question, create a Cypher query to retrieve the 
 Use only the provided relationship types and properties in the schema.
 Do not use any other relationship types or properties that are not provided.
 
-**IMPORTANT:** When filtering on string properties (like 'name'), use the `CONTAINS` operator instead of `=` for a more flexible match.
+**IMPORTANT:** String matching must be case-insensitive. Always use the `toLower()` function on both the property and the value.
 For example, if the question is "products in Routers category", generate a query like:
-`MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE c.name CONTAINS 'Routers' RETURN p.name`
-This is the correct operator syntax, which is better than `c.name = 'Routers'`.
+`MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE toLower(c.name) CONTAINS toLower('Routers') RETURN p.name`
+This is much better than `c.name = 'Routers'`.
 Do NOT use function syntax like `CONTAINS(c.name, 'Routers')`.
 
 Schema:

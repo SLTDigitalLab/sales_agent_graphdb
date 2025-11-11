@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langgraph.graph import StateGraph, END
 import httpx 
 
@@ -18,17 +18,17 @@ llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 # Define Agent State
 class AgentState(TypedDict):
-    question: str                
+    question: str 
     chat_history: List[BaseMessage] 
-    generation: str              
-    intermediate_steps: list     
-    route: str                   
+    generation: str 
+    intermediate_steps: list 
+    route: str 
 
 print("Initial setup complete. AgentState defined.")
 
 # Define Nodes 
 
-# UPDATED query_graph_db Node 
+# query_graph_db Node
 def query_graph_db(state: AgentState) -> AgentState:
     """
     Queries the Neo4j SERVICE API based on the question.
@@ -91,23 +91,35 @@ def query_vector_db(state: AgentState) -> AgentState:
 print("Node 'query_vector_db' defined (API call version).")
 
 # Define Router Logic
-
 ROUTER_PROMPT_TEMPLATE = """
-You are an expert router agent. Your task is to determine the best data source to query based on the user's question.
-You have two options:
-1.  'graph_db': Use this for questions about specific product details, prices, categories, features, counts, or relationships. This includes any questions asking for a list of products, product options, or specific product attributes.
-    Examples: "What's the price of X?", "How many Y products are there?", "What category is Z in?", "What router options do I have?", "Show me your security cameras."
-2.  'vector_db': Use this for questions requiring semantic search over general company information, website content, social media posts, customer feedback, or open-ended comparisons not directly based on structured product attributes.
-    Examples: "What are recent comments about our service?", "Summarize our latest blog post.", "Tell me about the company's mission.", "What's the latest news on LinkedIn?"
+You are an expert router agent. Your task is to analyze the user's question and choose the correct tool to answer it.
+You must output a JSON object with two keys: "reasoning" and "route".
 
-Based on the following question, which data source should be queried?
-Return ONLY 'graph_db' or 'vector_db' as your answer.
+The "route" key must be one of two values:
+1. 'graph_db': Use this for questions about specific product details, prices, categories, features, counts, or relationships.
+   This includes ANY question asking for a list of products, product options, or product attributes.
+   Examples:
+   - "What's the price of X?"
+   - "How many Y products are there?"
+   - "What category is Z in?"
+   - "What router options do I have?"
+   - "Show me your security cameras."
+   - "Do you have any Tenda routers?"
 
-Question: {question}
+2. 'vector_db': Use this for general, open-ended, or semantic questions.
+   This includes questions about company information, website content, social media posts, customer feedback, or comparisons not based on structured attributes.
+   Examples:
+   - "What are recent comments about our service?"
+   - "Summarize our latest blog post."
+   - "Tell me about the company's mission."
+   - "What's the latest news on LinkedIn?"
+
+Here is the user's question:
+{question}
 """
 router_prompt = ChatPromptTemplate.from_template(ROUTER_PROMPT_TEMPLATE)
-router_chain = router_prompt | llm | StrOutputParser()
-print("Router chain created.")
+router_chain = router_prompt | llm | JsonOutputParser()
+print("Router chain created (JSON Output).")
 
 def route_query(state: AgentState) -> AgentState:
     """
@@ -115,31 +127,34 @@ def route_query(state: AgentState) -> AgentState:
     """
     print("---NODE: route_query---")
     question = state["question"]
-    route_decision = router_chain.invoke({"question": question})
-    print(f"Routing decision: {route_decision}")
 
-    if "graph_db" in route_decision.lower():
+    response_json = router_chain.invoke({"question": question})
+    route_decision = response_json.get("route", "vector_db")
+    
+    print(f"Routing decision: {route_decision} (Reason: {response_json.get('reasoning', 'N/A')})")
+
+    if route_decision == "graph_db":
         return {"route": "neo4j"}
-    elif "vector_db" in route_decision.lower():
-        return {"route": "vector"}
     else:
-        print("Router fallback: defaulting to vector_db")
         return {"route": "vector"}
+        
 print("Node 'route_query' defined.")
 
-# Define Synthesis Node 
+# Define Synthesis Node
 SYNTHESIS_PROMPT_TEMPLATE = """
-You are a helpful AI assistant answering questions based on retrieved information.
-Given the chat history and the latest retrieved context (intermediate steps), formulate a final answer to the user's question.
-Make the answer conversational.
-If the context contains an error message or indicates that the information could not be found, state that clearly.
-Do not make up information.
-If the context includes a price, format it as "Rs. [price]" (e.g., Rs. 11,410.00).
+You are a helpful AI assistant. Your job is to answer the user's question based on the context provided in "Intermediate Steps Context".
+This context is your only source of truth. Do not use any outside knowledge.
+
+- First, analyze the "Intermediate Steps Context".
+- If the context is empty, contains an error, or says "No relevant information found", you MUST respond with "I'm sorry, I could not find any specific information about that."
+- **Otherwise, you MUST synthesize an answer using the provided context.** Even if the context is only generally related to the question, you must summarize what you found. For example, if the user asks for "news" and the context is a post about "Data Gifting", you should say: "I found a recent social media post about SLT-MOBITEL Data Gifting: [summary of the post]..."
+- Do not make up information.
+- If the context includes a price, format it as "Rs. [price]" (e.g., Rs. 11,410.00).
 
 Chat History:
 {chat_history}
 
-Intermediate Steps Context (if any):
+Intermediate Steps Context:
 {intermediate_steps}
 
 User's Latest Question: {question}
