@@ -38,7 +38,7 @@ function App() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/chat`, {
+      const response = await fetch(`${API_BASE_URL}/v1/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,7 +84,7 @@ function App() {
   const clearHistory = async () => {
     if (window.confirm('Are you sure you want to clear the chat history?')) {
       try {
-        await fetch(`${API_BASE_URL}/chat/clear`, {
+        await fetch(`${API_BASE_URL}/v1/chat/clear`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
