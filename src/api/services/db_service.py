@@ -157,13 +157,19 @@ def run_chroma_ingestion() -> int:
     linkedin_json_path = os.path.join(DATA_DIR, "linkedin_data.json")
     print(f"Loading linkedin data from: {linkedin_json_path}")
     linkedin_json = load_json_data(linkedin_json_path)
-    
+
+    facebook_json_path = os.path.join(DATA_DIR, "facebook_data.json")
+    print(f"Loading facebook data from: {facebook_json_path}")
+    facebook_json = load_json_data(facebook_json_path)
+
     website_data = website_json.get("data", []) if isinstance(website_json, dict) else website_json
     linkedin_data = linkedin_json.get("data", []) if isinstance(linkedin_json, dict) else linkedin_json
+    facebook_data = facebook_json.get("data", []) if isinstance(facebook_json, dict) else facebook_json
 
     total_added = 0
     total_added += ingest_data(website_data, "website")
     total_added += ingest_data(linkedin_data, "linkedin")
+    total_added += ingest_data(facebook_data, "facebook")
 
     try:
         total_items = vector_store.collection.count()
