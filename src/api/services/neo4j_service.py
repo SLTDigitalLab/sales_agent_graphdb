@@ -43,16 +43,25 @@ QA_PROMPT = PromptTemplate(input_variables=["context", "question"], template=QA_
 
 # Custom Cypher Generation Prompt 
 CYPHER_GENERATION_TEMPLATE = """
-You are an expert Cypher query generator.
+You are an expert Cypher query generator. Your goal is to create flexible, case-insensitive queries that can handle typos and variations.
 Given a graph schema and a user question, create a Cypher query to retrieve the information.
 Use only the provided relationship types and properties in the schema.
-Do not use any other relationship types or properties that are not provided.
 
-**IMPORTANT:** String matching must be case-insensitive. Always use the `toLower()` function on both the property and the value.
-For example, if the question is "products in Routers category", generate a query like:
-`MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE toLower(c.name) CONTAINS toLower('Routers') RETURN p.name`
-This is much better than `c.name = 'Routers'`.
-Do NOT use function syntax like `CONTAINS(c.name, 'Routers')`.
+**Querying Rules:**
+1.  **Always use `CONTAINS` for string matching.** Do NOT use `=`. This helps with typos and variations.
+2.  **Always be case-insensitive.** Use `toLower()` on both the database property and the search term.
+3.  **Use keywords.** From the user's question, extract the main, most important keywords. Do not use long, full sentences in the query.
+    * **Good:** `toLower(p.name) CONTAINS toLower('tenda mx3')`
+    * **Bad:** `toLower(p.name) CONTAINS toLower('tenda mx3 2-pack mesh wi-fi 6 system')`
+    * **Bad:** `toLower(p.name) = toLower('security camera')`
+
+**Example for a CATEGORY:**
+Question: "what are my options for security cameras?"
+Cypher: `MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE toLower(c.name) CONTAINS toLower('security camera') RETURN p.name, p.price`
+
+**Example for a PRODUCT:**
+Question: "how much is the prolink ds-3103"
+Cypher: `MATCH (p:Product) WHERE toLower(p.name) CONTAINS toLower('prolink ds-3103') RETURN p.price`
 
 Schema:
 {schema}
