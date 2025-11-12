@@ -110,6 +110,24 @@ function App() {
     });
   };
 
+  const formatMessageContent = (content) => {
+    if (!content) return '';
+
+    // Regex Explanation:
+    // \*\* : Matches the literal double asterisks (start of bold)
+    // (.*?) : Captures any characters (non-greedily) inside the asterisks ($1)
+    // \*\* : Matches the literal double asterisks (end of bold)
+    // g : Global flag, ensures all instances are replaced
+    
+    // Replaces **text** with <strong>text</strong>
+    const formattedContent = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Optional: Add support for newlines if the API sends \n
+    // const withBreaks = formattedContent.replace(/\n/g, '<br />'); 
+    
+    return formattedContent;
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
@@ -206,7 +224,10 @@ function App() {
                         ? 'bg-red-50 text-red-800 border border-red-200'
                         : 'bg-white text-slate-800 shadow-sm border border-slate-200'
                     }`}>
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      <div 
+                          className="text-sm leading-relaxed whitespace-pre-wrap"
+                          dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
+                      />
                     </div>
                     <span className="text-xs text-slate-400 mt-1 px-2">
                       {formatTime(message.timestamp)}
