@@ -42,19 +42,18 @@ Once the environment is set up, follow these steps to run the application:
     ```bash
     python main_scraper.py
     ```
-
-5.  **Ingest data to ChromaDB and Neo4j:**
-    Manually call the relevant API endpoints in the **FastAPI Swagger UI** (usually at `http://localhost:8000/docs`) to process the scraped data and load it into the databases.
-
-    * **Ingest Chroma Data (Vector Store):** `POST /db/admin/ingest-chroma`
-    * **Ingest Neo4J Data (Graph DB):** `POST /admin/ingest-neo4j`
-
-6.  **Run the backend server:**
+5.  **Run the backend server:**
     Start the main application backend, which houses the LangGraph agent and API services.
     ```bash
     uvicorn src.main:api --reload --port 8000
     ```
     The backend API and Swagger UI will be available at `http://localhost:8000`.
+    
+6.  **Ingest data to ChromaDB and Neo4j:**
+    Manually call the relevant API endpoints in the **FastAPI Swagger UI** (usually at `http://localhost:8000/docs`) to process the scraped data and load it into the databases.
+
+    * **Ingest Chroma Data (Vector Store):** `POST /db/admin/ingest-chroma`
+    * **Ingest Neo4J Data (Graph DB):** `POST /admin/ingest-neo4j`
 
 7.  **Run the frontend application:**
     Navigate to the `frontend` directory and start the development server.
