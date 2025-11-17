@@ -186,26 +186,29 @@ def run_clear_chroma():
     """
     print("--- Chroma Service: Clearing 'enterprise_data' collection ---")
     try:
-        vector_store.delete_collection()
-        print("Collection deleted.")
-        vector_store.collection = vector_store._client.get_or_create_collection(
-            name="enterprise_data",
-            embedding_function=embeddings
+        temp_vector_store = Chroma(
+            collection_name="enterprise_data",
+            embedding_function=embeddings,
+            persist_directory=CHROMA_PERSIST_DIR
         )
-        print("Collection re-created.")
-        return "Collection 'enterprise_data' cleared successfully."
+        temp_vector_store.delete_collection()
+        print("Collection deleted.")
+        
+        global vector_store, retriever
+        vector_store = Chroma(
+            collection_name="enterprise_data",
+            embedding_function=embeddings,
+            persist_directory=CHROMA_PERSIST_DIR
+        )
+        retriever = vector_store.as_retriever(
+            search_type="similarity",
+            search_kwargs={"k": 5} 
+        )
+        
+        print("Collection re-created with new instance.")
+        return "Collection 'enterprise_data' cleared and re-created successfully."
     except Exception as e:
         print(f"Error clearing collection: {e}")
-        # Try to re create 
-        try:
-            vector_store.collection = vector_store._client.get_or_create_collection(
-                name="enterprise_data",
-                embedding_function=embeddings
-            )
-            print("Collection created.")
-            return "Collection created."
-        except Exception as e2:
-            print(f"Error re-creating collection: {e2}")
-            raise e2
+        raise e            
 
 print("ChromaDB Service file loaded.")

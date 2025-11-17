@@ -1,12 +1,13 @@
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from typing import List, Dict
 import os
 
 from .api.services.chat_service import chat_histories 
 
 # Importing Routers
-from .api.routers import v1_chat, db_utils, core, neo4j_utils
+from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin
 
 print("FastAPI application initialized and routers included.")
 
@@ -31,10 +32,16 @@ api.add_middleware(
     allow_headers=["*"], 
 )
 
+# Serve admin dashboard
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+admin_dashboard_path = os.path.join(project_root, 'admin-dashboard')
+api.mount("/admin-ui", StaticFiles(directory=admin_dashboard_path, html=True), name="admin-ui")
+
 # Register Routers 
 api.include_router(core.router)      
 api.include_router(v1_chat.router)   
 api.include_router(db_utils.router)  
-api.include_router(neo4j_utils.router)  
+api.include_router(neo4j_utils.router) 
+api.include_router(admin.router) 
 
 print("FastAPI application initialized and routers included.")
