@@ -25,7 +25,7 @@ Follow these steps to set up your local development environment.
     source venv/bin/activate
 
     # Activate on Windows
-    .\venv\Scripts\activate
+    .venv\Scripts\activate
     ```
 
 3.  **Install all required packages:**
@@ -52,7 +52,7 @@ Once the environment is set up, follow these steps to run the application:
 6.  **Ingest data to ChromaDB and Neo4j:**
     Manually call the relevant API endpoints in the **FastAPI Swagger UI** (usually at `http://localhost:8000/docs`) to process the scraped data and load it into the databases.
 
-    * **Ingest Chroma Data (Vector Store):** `POST /db/admin/ingest-chroma`
+    * **Ingest Chroma Data (Vector Store):** `POST /admin/ingest-chroma`
     * **Ingest Neo4J Data (Graph DB):** `POST /admin/ingest-neo4j`
 
 7.  **Run the frontend application:**
