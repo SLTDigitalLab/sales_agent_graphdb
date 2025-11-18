@@ -2,17 +2,18 @@ from scrapers.website_scraper import WebsiteScraper
 from scrapers.linkedin_scraper import LinkedInScraper
 from scrapers.facebook_scraper import FacebookScraper 
 from src.api.services.config_manager import load_config
+import asyncio 
 
-if __name__ == "__main__":
+async def main_scraper(): 
     print("Starting Data Collection...")
     
     config = load_config()
     
     if not config:
         print("Exiting due to missing or empty config.json.")
-        exit() 
+        return 
 
-    # Website Scraper
+    # Website Scraper 
     website_url = config.get("website_url")
     if website_url:
         print(f"\n--- Starting Website Scraper for {website_url} ---")
@@ -21,16 +22,16 @@ if __name__ == "__main__":
     else:
         print("\nSkipping Website Scraper: 'website_url' not found in config.json")
 
-    # LinkedIn Scraper
+    # LinkedIn Scraper 
     li_url = config.get("linkedin_url")
     if li_url:
         print(f"\n--- Starting LinkedIn Scraper for {li_url} ---")
         li = LinkedInScraper(li_url, max_posts=5)
-        li.scrape()
+        await li.scrape() 
     else:
         print("\nSkipping LinkedIn Scraper: 'linkedin_url' not found in config.json")
     
-    # Facebook Scraper
+    # Facebook Scraper 
     fb_url = config.get("facebook_url")
     if fb_url:
         print(f"\n--- Starting Facebook Scraper (via Apify) for {fb_url} ---")
@@ -45,3 +46,6 @@ if __name__ == "__main__":
         print("\nSkipping Facebook Scraper: 'facebook_url' not found in config.json")
 
     print("\nAll scraping completed successfully!")
+
+if __name__ == "__main__":
+    asyncio.run(main_scraper())
