@@ -110,6 +110,7 @@ The "route" key must be one of three values:
    Examples:
    - "What are recent comments about our service?"
    - "Summarize our latest blog post."
+   - "Give me info on fiber products."
    - "Tell me about the company's mission."
    - "What's the latest news on LinkedIn?"
    - "How many shares and reactions do our posts have?"
@@ -155,20 +156,22 @@ print("Node 'route_query' defined.")
 
 # Define Synthesis Node
 SYNTHESIS_PROMPT_TEMPLATE = """
-You are a helpful AI assistant for SLT-MOBITEL. Your job is to answer the user's question based on the context provided in "Intermediate Steps Context" and the "Chat History".
+You are a helpful AI assistant for SLT-MOBITEL. Your job is to answer the user's question based ONLY on the context provided in "Intermediate Steps Context" and the "Chat History".
+
+IMPORTANT RULES:
+1. NEVER use your general knowledge to answer questions.
+2. If the context is empty, contains an error, or says "No relevant information found", you MUST respond with "I'm sorry, I could not find any specific information about that in our knowledge base."
+3. NEVER generate responses about unrelated topics (like dietary fiber when asked about internet fiber products).
+4. If Neo4j returned no results for a product query, do NOT generate general knowledge responses.
+
+For questions about SLT products:
+- If Neo4j has no results for the specific product category, respond with: "I couldn't find specific information about [product type] in our current product database. You may want to check our official website or contact our customer service for the most up-to-date information."
 
 For questions about engagement metrics (comments, reactions, shares, likes):
 - Look for documents with metadata containing: likes_count, shares_count, comments_count, reactions_count
 - Extract metrics from the metadata, not the content
 - Format as: "Post: [post summary] - Likes: [count], Shares: [count], Comments: [count], Reactions: [count]"
 - If specific counts are not available, say so explicitly
-
-For other questions:
-- If the context is empty, contains an error, or says "No relevant information found", you MUST respond with "I'm sorry, I could not find any specific information about that."
-- Otherwise, synthesize an answer using the provided context and chat history.
-- Use the chat history to maintain context and avoid repeating information.
-- If the context includes a price, format it as "Rs. [price]" (e.g., Rs. 11,410.00).
-- Be conversational and natural in your responses.
 
 When showing social media content:
 - For posts: "[post content] - from [source]"
@@ -191,16 +194,17 @@ print("Synthesis chain created.")
 def generate_response(state: AgentState) -> AgentState:
     """
     Generates the final response using LLM based on chat history and intermediate steps.
+    If Neo4j returns no results for product queries, automatically queries ChromaDB as fallback.
     """
     print("---NODE: generate_response---")
     question = state["question"]
-    intermediate_steps = state.get("intermediate_steps", [])  # Use .get() to avoid KeyError
+    intermediate_steps = state.get("intermediate_steps", [])
     chat_history = state.get("chat_history", [])
-
-    # Check if this is a general question
-    is_general = any(step.get("result") == "general_question" for step in intermediate_steps)
     
-    if is_general:
+    # Check if this is a general question
+    original_route = state.get("route", "")
+    if original_route == "general":
+        # Handle general/greeting questions directly
         if any(greeting in question.lower() for greeting in ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]):
             response = "Hello! I'm your SLT-MOBITEL assistant. How can I help you today? You can ask me about our products, services, or general company information."
         elif any(thanks in question.lower() for thanks in ["thank", "thanks", "thank you"]):
@@ -212,6 +216,37 @@ def generate_response(state: AgentState) -> AgentState:
         
         updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=response)]
         return {"generation": response, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
+    
+    # Check if Neo4j returned no results for a product query
+    neo4j_no_results = False
+    for step in intermediate_steps:
+        if (step.get("tool") == "neo4j_qa" and 
+            ("No result found" in str(step.get("result", "")) or 
+             "Error" in str(step.get("result", "")) or
+             step.get("no_results", False))):
+            neo4j_no_results = True
+            break
+    
+    # If Neo4j had no results, query ChromaDB as fallback
+    if neo4j_no_results:
+        print("Neo4j returned no results, querying ChromaDB as fallback...")
+        try:
+            response = httpx.post(
+                f"{API_BASE_URL}/db/vector/search", 
+                json={"question": question},
+                timeout=60.0
+            )
+            response.raise_for_status()
+            
+            chroma_result = response.json().get("result", "No relevant information found.")
+            if "No relevant information" not in chroma_result:
+                # Add ChromaDB result as additional context
+                intermediate_steps.append({"tool": "vector_db_fallback", "result": chroma_result})
+                print(f"ChromaDB fallback found: {chroma_result[:100]}...")
+            else:
+                print("ChromaDB also returned no relevant information.")
+        except Exception as e:
+            print(f"Error querying ChromaDB fallback: {e}")
     
     context_str = "\n".join([str(step) for step in intermediate_steps])
     history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history])
