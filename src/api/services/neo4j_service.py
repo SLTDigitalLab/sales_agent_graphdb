@@ -13,7 +13,7 @@ NEO4J_USER = os.getenv("NEO4J_USER")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-script_dir = os.path.dirname(__file__)
+script_dir = os.path.dirname(file)
 PROJECT_ROOT = os.path.join(script_dir, '..', '..', '..') 
 CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
@@ -33,7 +33,7 @@ try:
     # Define QA chain
     QA_TEMPLATE_TEXT = """
     You are an assistant that helps to form nice and human-readable answers...
-    **IMPORTANT:** All prices are in Sri Lankan Rupees (Rs.)...
+    IMPORTANT: All prices are in Sri Lankan Rupees (Rs.)...
     Information:
     {context}
     Question: {question}
@@ -47,21 +47,21 @@ try:
     Given a graph schema and a user question, create a Cypher query to retrieve the information.
     Use only the provided relationship types and properties in the schema.
 
-    **Querying Rules:**
-    1.  **Always use `CONTAINS` for string matching.** Do NOT use `=`. This helps with typos and variations.
-    2.  **Always be case-insensitive.** Use `toLower()` on both the database property and the search term.
-    3.  **Use keywords.** From the user's question, extract the main, most important keywords. Do not use long, full sentences in the query.
-        * **Good:** `toLower(p.name) CONTAINS toLower('tenda mx3')`
-        * **Bad:** `toLower(p.name) CONTAINS toLower('tenda mx3 2-pack mesh wi-fi 6 system')`
-        * **Bad:** `toLower(p.name) = toLower('security camera')`
+    Querying Rules:
+    1.  Always use `CONTAINS` for string matching. Do NOT use =. This helps with typos and variations.
+    2.  Always be case-insensitive. Use toLower() on both the database property and the search term.
+    3.  Use keywords. From the user's question, extract the main, most important keywords. Do not use long, full sentences in the query.
+        * Good: toLower(p.name) CONTAINS toLower('tenda mx3')
+        * Bad: toLower(p.name) CONTAINS toLower('tenda mx3 2-pack mesh wi-fi 6 system')
+        * Bad: toLower(p.name) = toLower('security camera')
 
-    **Example for a CATEGORY:**
+    Example for a CATEGORY:
     Question: "what are my options for security cameras?"
-    Cypher: `MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE toLower(c.name) CONTAINS toLower('security camera') RETURN p.name, p.price`
+    Cypher: MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE toLower(c.name) CONTAINS toLower('security camera') RETURN p.name, p.price
 
-    **Example for a PRODUCT:**
+    Example for a PRODUCT:
     Question: "how much is the prolink ds-3103"
-    Cypher: `MATCH (p:Product) WHERE toLower(p.name) CONTAINS toLower('prolink ds-3103') RETURN p.price`
+    Cypher: MATCH (p:Product) WHERE toLower(p.name) CONTAINS toLower('prolink ds-3103') RETURN p.price
 
     Schema:
     {schema}
@@ -86,10 +86,10 @@ except Exception as e:
     print("Neo4j service will be unavailable until connection is restored.")
     neo4j_available = False
     neo4j_qa_chain = None
-
-# Define ingestion logic
+    
+    # Define ingestion logic
 class Neo4jIngestor:
-    def __init__(self, uri, user, password):
+    def init(self, uri, user, password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self.driver.verify_connectivity()
     def close(self):
