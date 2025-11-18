@@ -175,14 +175,14 @@ function App() {
                   <p className="text-xs text-slate-500 mt-1">Ask about product prices</p>
                 </button>
                 <button
-                  onClick={() => setInputValue("How many products are in the Wi-Fi Devices category?")}
+                  onClick={() => setInputValue("What are available product categories?")}
                   className="p-4 bg-white border border-slate-200 rounded-lg hover:border-blue-400 hover:shadow-md transition-all text-left"
                 >
                   <p className="text-sm font-medium text-slate-800">Product Categories</p>
                   <p className="text-xs text-slate-500 mt-1">Explore product categories</p>
                 </button>
                 <button
-                  onClick={() => setInputValue("Tell me about SLT's broadband services")}
+                  onClick={() => setInputValue("Tell me about SLT's services")}
                   className="p-4 bg-white border border-slate-200 rounded-lg hover:border-blue-400 hover:shadow-md transition-all text-left"
                 >
                   <p className="text-sm font-medium text-slate-800">Company Information</p>
