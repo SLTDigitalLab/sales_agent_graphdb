@@ -13,7 +13,7 @@ NEO4J_USER = os.getenv("NEO4J_USER")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-script_dir = os.path.dirname(file)
+script_dir = os.path.dirname(__file__)
 PROJECT_ROOT = os.path.join(script_dir, '..', '..', '..') 
 CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
