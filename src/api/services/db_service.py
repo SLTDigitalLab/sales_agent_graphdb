@@ -35,8 +35,25 @@ print("ChromaDB vector store and retriever initialized for service.")
 
 # Helper function to format retrieved documents
 def format_docs(docs: List[Document]) -> str:
-    """Converts a list of Document objects into a single formatted string."""
-    return "\n\n".join(f"Source: {doc.metadata.get('source', 'unknown')}\nContent: {doc.page_content}" for doc in docs)
+    """Converts a list of Document objects into a single formatted string, including metadata."""
+    formatted_parts = []
+    for doc in docs:
+        source = doc.metadata.get('source', 'unknown')
+        
+        # Check if this is a Facebook post with engagement metrics
+        if doc.metadata.get('engagement_type') == 'facebook_post':
+            likes = doc.metadata.get('likes_count', 'unknown')
+            shares = doc.metadata.get('shares_count', 'unknown')
+            comments = doc.metadata.get('comments_count', 'unknown')
+            reactions = doc.metadata.get('reactions_count', 'unknown')
+            
+            formatted_part = f"Source: {source}\nContent: {doc.page_content}\nEngagement Metrics: Likes: {likes}, Shares: {shares}, Comments: {comments}, Reactions: {reactions}"
+        else:
+            formatted_part = f"Source: {source}\nContent: {doc.page_content}"
+        
+        formatted_parts.append(formatted_part)
+    
+    return "\n\n".join(formatted_parts)
 
 # Define the Pydantic Model
 class DocumentResult(BaseModel):
@@ -58,6 +75,7 @@ def load_json_data(file_path):
 def ingest_data(data_list, source):
     """
     Converts data list into LangChain Document objects and adds them to the vector store.
+    For Facebook data, also stores engagement metrics in metadata.
     """
     if not data_list:
         print(f"No data found for {source}. Skipping.")
@@ -70,24 +88,47 @@ def ingest_data(data_list, source):
     
     for i, entry in enumerate(data_list):
         if isinstance(entry, dict):
+            # Handle main post content
             text = entry.get("post_text") or entry.get("text") or entry.get("title") or entry.get("description")
         else:
             text = str(entry)
         
-        if not text or text == "Error scraping post details":
-            print(f"Skipping entry {i} from {source} due to missing or error text.")
-            continue
-
-        # Creating LangChain Document object
-        doc = Document(
-            page_content=text,
-            metadata={"source": source}
-        )
-        documents_to_add.append(doc)
-        ids_batch.append(f"{source}_{i}")
+        if text and text != "Error scraping post details":
+            # Prepare metadata based on source
+            metadata = {"source": source, "type": "post"}
+            
+            # Add Facebook-specific engagement metrics to metadata
+            if source == "facebook":
+                likes = entry.get("likes")
+                shares = entry.get("shares") 
+                comments = entry.get("comments")
+                reactions = entry.get("topReactionsCount")
+                
+                print(f"  Facebook post {i}: likes={likes}, shares={shares}, comments={comments}, reactions={reactions}")
+                
+                metadata.update({
+                    "post_id": entry.get("postId", f"{source}_{i}"),
+                    "facebook_url": entry.get("url"),
+                    "post_time": entry.get("time"),
+                    "likes_count": likes,
+                    "shares_count": shares,
+                    "comments_count": comments if isinstance(comments, int) else 0,
+                    "reactions_count": reactions,
+                    "engagement_type": "facebook_post"
+                })
+            else:
+                metadata["post_id"] = entry.get("postId", f"{source}_{i}")
+        
+            # Create document with engagement metrics in metadata
+            doc = Document(
+                page_content=text,
+                metadata=metadata
+            )
+            documents_to_add.append(doc)
+            ids_batch.append(f"{source}_post_{i}")
 
     if documents_to_add:
-        print(f"Ingesting {len(documents_to_add)} documents from {source} into ChromaDB...")
+        print(f"Ingesting {len(documents_to_add)} documents ({source}) into ChromaDB...")
         vector_store.add_documents(
             documents=documents_to_add,
             ids=ids_batch
@@ -172,10 +213,10 @@ def run_chroma_ingestion() -> int:
     total_added += ingest_data(facebook_data, "facebook")
 
     try:
-        total_items = vector_store.collection.count()
+        count_result = vector_store._collection.count()
         print(f"\n--- Ingestion Complete ---")
-        print(f"Total items in ChromaDB: {total_items}")
-        return total_items
+        print(f"Total items in ChromaDB: {count_result}")
+        return count_result
     except Exception as e:
         print(f"Error counting items in collection: {e}")
         return total_added

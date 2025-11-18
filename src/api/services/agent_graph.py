@@ -106,12 +106,15 @@ The "route" key must be one of three values:
    - "Show me your security cameras."
    - "Do you have any Tenda routers?"
 
-2. 'vector_db': Use this for general, open-ended, or semantic questions about company information, website content, social media posts, customer feedback, or comparisons not based on structured attributes.
+2. 'vector_db': Use this for general, open-ended, or semantic questions about company information, website content, social media posts, customer feedback, engagement metrics (comments, shares, reactions, likes), or comparisons not based on structured attributes.
    Examples:
    - "What are recent comments about our service?"
    - "Summarize our latest blog post."
    - "Tell me about the company's mission."
    - "What's the latest news on LinkedIn?"
+   - "How many shares and reactions do our posts have?"
+   - "What are the engagement metrics for SLT posts?"
+   - "Show me recent social media activity."
 
 3. 'general': Use this for conversational questions, greetings, small talk, or questions that don't require database lookups.
    Examples:
@@ -154,10 +157,11 @@ print("Node 'route_query' defined.")
 SYNTHESIS_PROMPT_TEMPLATE = """
 You are a helpful AI assistant for SLT-MOBITEL. Your job is to answer the user's question based on the context provided in "Intermediate Steps Context" and the "Chat History".
 
-If the context contains "general_question", respond conversationally without database information:
-- For greetings like "hello", "hi", "good morning", etc., respond warmly
-- For thanks, acknowledge them politely
-- For simple questions about capabilities, explain what you can help with
+For questions about engagement metrics (comments, reactions, shares, likes):
+- Look for documents with metadata containing: likes_count, shares_count, comments_count, reactions_count
+- Extract metrics from the metadata, not the content
+- Format as: "Post: [post summary] - Likes: [count], Shares: [count], Comments: [count], Reactions: [count]"
+- If specific counts are not available, say so explicitly
 
 For other questions:
 - If the context is empty, contains an error, or says "No relevant information found", you MUST respond with "I'm sorry, I could not find any specific information about that."
@@ -165,6 +169,10 @@ For other questions:
 - Use the chat history to maintain context and avoid repeating information.
 - If the context includes a price, format it as "Rs. [price]" (e.g., Rs. 11,410.00).
 - Be conversational and natural in your responses.
+
+When showing social media content:
+- For posts: "[post content] - from [source]"
+- For engagement: "Engagement metrics: [likes] likes, [shares] shares, [comments] comments, [reactions] reactions"
 
 Chat History (most recent at bottom):
 {chat_history}
