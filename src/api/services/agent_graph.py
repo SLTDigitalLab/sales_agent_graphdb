@@ -95,7 +95,7 @@ ROUTER_PROMPT_TEMPLATE = """
 You are an expert router agent. Your task is to analyze the user's question and choose the correct tool to answer it.
 You must output a JSON object with two keys: "reasoning" and "route".
 
-The "route" key must be one of two values:
+The "route" key must be one of three values:
 1. 'graph_db': Use this for questions about specific product details, prices, categories, features, counts, or relationships.
    This includes ANY question asking for a list of products, product options, or product attributes.
    Examples:
@@ -106,13 +106,21 @@ The "route" key must be one of two values:
    - "Show me your security cameras."
    - "Do you have any Tenda routers?"
 
-2. 'vector_db': Use this for general, open-ended, or semantic questions.
-   This includes questions about company information, website content, social media posts, customer feedback, or comparisons not based on structured attributes.
+2. 'vector_db': Use this for general, open-ended, or semantic questions about company information, website content, social media posts, customer feedback, or comparisons not based on structured attributes.
    Examples:
    - "What are recent comments about our service?"
    - "Summarize our latest blog post."
    - "Tell me about the company's mission."
    - "What's the latest news on LinkedIn?"
+
+3. 'general': Use this for conversational questions, greetings, small talk, or questions that don't require database lookups.
+   Examples:
+   - "Hello"
+   - "Hi"
+   - "How are you?"
+   - "Thanks"
+   - "Good morning"
+   - "What can you help me with?"
 
 Here is the user's question:
 {question}
@@ -123,7 +131,7 @@ print("Router chain created (JSON Output).")
 
 def route_query(state: AgentState) -> AgentState:
     """
-    Determines whether to query the graph database or the vector database.
+    Determines whether to query the graph database, vector database, or handle as general question.
     """
     print("---NODE: route_query---")
     question = state["question"]
@@ -135,23 +143,30 @@ def route_query(state: AgentState) -> AgentState:
 
     if route_decision == "graph_db":
         return {"route": "neo4j"}
-    else:
+    elif route_decision == "vector_db":
         return {"route": "vector"}
+    else:
+        return {"route": "general"}
         
 print("Node 'route_query' defined.")
 
 # Define Synthesis Node
 SYNTHESIS_PROMPT_TEMPLATE = """
-You are a helpful AI assistant. Your job is to answer the user's question based on the context provided in "Intermediate Steps Context".
-This context is your only source of truth. Do not use any outside knowledge.
+You are a helpful AI assistant for SLT-MOBITEL. Your job is to answer the user's question based on the context provided in "Intermediate Steps Context" and the "Chat History".
 
-- First, analyze the "Intermediate Steps Context".
+If the context contains "general_question", respond conversationally without database information:
+- For greetings like "hello", "hi", "good morning", etc., respond warmly
+- For thanks, acknowledge them politely
+- For simple questions about capabilities, explain what you can help with
+
+For other questions:
 - If the context is empty, contains an error, or says "No relevant information found", you MUST respond with "I'm sorry, I could not find any specific information about that."
-- **Otherwise, you MUST synthesize an answer using the provided context.** Even if the context is only generally related to the question, you must summarize what you found. For example, if the user asks for "news" and the context is a post about "Data Gifting", you should say: "I found a recent social media post about SLT-MOBITEL Data Gifting: [summary of the post]..."
-- Do not make up information.
+- Otherwise, synthesize an answer using the provided context and chat history.
+- Use the chat history to maintain context and avoid repeating information.
 - If the context includes a price, format it as "Rs. [price]" (e.g., Rs. 11,410.00).
+- Be conversational and natural in your responses.
 
-Chat History:
+Chat History (most recent at bottom):
 {chat_history}
 
 Intermediate Steps Context:
@@ -171,9 +186,25 @@ def generate_response(state: AgentState) -> AgentState:
     """
     print("---NODE: generate_response---")
     question = state["question"]
-    intermediate_steps = state["intermediate_steps"]
+    intermediate_steps = state.get("intermediate_steps", [])  # Use .get() to avoid KeyError
     chat_history = state.get("chat_history", [])
 
+    # Check if this is a general question
+    is_general = any(step.get("result") == "general_question" for step in intermediate_steps)
+    
+    if is_general:
+        if any(greeting in question.lower() for greeting in ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]):
+            response = "Hello! I'm your SLT-MOBITEL assistant. How can I help you today? You can ask me about our products, services, or general company information."
+        elif any(thanks in question.lower() for thanks in ["thank", "thanks", "thank you"]):
+            response = "You're welcome! Is there anything else I can help you with?"
+        elif any(ability in question.lower() for ability in ["what can you", "what do you", "how can you", "help"]):
+            response = "I can help you with information about SLT-MOBITEL products and services. You can ask about specific product prices, categories, features, or general company information from our website and social media."
+        else:
+            response = "I'm here to help you with information about SLT-MOBITEL products and services. You can ask about specific products, prices, or general company information."
+        
+        updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=response)]
+        return {"generation": response, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
+    
     context_str = "\n".join([str(step) for step in intermediate_steps])
     history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history])
 
@@ -185,7 +216,7 @@ def generate_response(state: AgentState) -> AgentState:
     print(f"Generated final answer: {final_answer}")
     
     updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=final_answer)]
-    return {"generation": final_answer, "chat_history": updated_history}
+    return {"generation": final_answer, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
 print("Node 'generate_response' defined.") 
 
 # Build and Compile the Graph
@@ -205,6 +236,8 @@ def decide_next_node(state: AgentState):
         return "query_neo4j"
     elif state['route'] == "vector":
         return "query_vector"
+    elif state['route'] == "general":
+        return "generate"  
     else:
         print("Conditional edge fallback: ending.")
         return END
@@ -215,6 +248,7 @@ workflow.add_conditional_edges(
     {
         "query_neo4j": "query_neo4j", 
         "query_vector": "query_vector",
+        "generate": "generate",
         END: END                    
     }
 )

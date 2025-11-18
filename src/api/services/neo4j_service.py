@@ -19,67 +19,73 @@ CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
 # Initialize Neo4j connections
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-graph = Neo4jGraph(
-    url=NEO4J_URI,
-    username=NEO4J_USER,
-    password=NEO4J_PASSWORD
-)
+
+# Initialize Neo4j graph connection with error handling
 try:
+    graph = Neo4jGraph(
+        url=NEO4J_URI,
+        username=NEO4J_USER,
+        password=NEO4J_PASSWORD
+    )
     graph.refresh_schema()
     print("Neo4j schema refreshed for service.")
+    
+    # Define QA chain
+    QA_TEMPLATE_TEXT = """
+    You are an assistant that helps to form nice and human-readable answers...
+    **IMPORTANT:** All prices are in Sri Lankan Rupees (Rs.)...
+    Information:
+    {context}
+    Question: {question}
+    Helpful Answer:
+    """
+    QA_PROMPT = PromptTemplate(input_variables=["context", "question"], template=QA_TEMPLATE_TEXT)
+
+    # Custom Cypher Generation Prompt 
+    CYPHER_GENERATION_TEMPLATE = """
+    You are an expert Cypher query generator. Your goal is to create flexible, case-insensitive queries that can handle typos and variations.
+    Given a graph schema and a user question, create a Cypher query to retrieve the information.
+    Use only the provided relationship types and properties in the schema.
+
+    **Querying Rules:**
+    1.  **Always use `CONTAINS` for string matching.** Do NOT use `=`. This helps with typos and variations.
+    2.  **Always be case-insensitive.** Use `toLower()` on both the database property and the search term.
+    3.  **Use keywords.** From the user's question, extract the main, most important keywords. Do not use long, full sentences in the query.
+        * **Good:** `toLower(p.name) CONTAINS toLower('tenda mx3')`
+        * **Bad:** `toLower(p.name) CONTAINS toLower('tenda mx3 2-pack mesh wi-fi 6 system')`
+        * **Bad:** `toLower(p.name) = toLower('security camera')`
+
+    **Example for a CATEGORY:**
+    Question: "what are my options for security cameras?"
+    Cypher: `MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE toLower(c.name) CONTAINS toLower('security camera') RETURN p.name, p.price`
+
+    **Example for a PRODUCT:**
+    Question: "how much is the prolink ds-3103"
+    Cypher: `MATCH (p:Product) WHERE toLower(p.name) CONTAINS toLower('prolink ds-3103') RETURN p.price`
+
+    Schema:
+    {schema}
+
+    Question: {question}
+    Cypher Query:
+    """
+    CYPHER_PROMPT = PromptTemplate(input_variables=["schema", "question"], template=CYPHER_GENERATION_TEMPLATE)
+
+    neo4j_qa_chain = GraphCypherQAChain.from_llm(
+        llm=llm,
+        graph=graph,
+        verbose=True,
+        allow_dangerous_requests=True,
+        qa_prompt=QA_PROMPT,
+        cypher_prompt=CYPHER_PROMPT
+    )
+    print("Neo4j QA Chain service initialized.")
+    neo4j_available = True
 except Exception as e:
-    print(f"Error refreshing Neo4j schema: {e}")
-
-# Define QA chain
-QA_TEMPLATE_TEXT = """
-You are an assistant that helps to form nice and human-readable answers...
-**IMPORTANT:** All prices are in Sri Lankan Rupees (Rs.)...
-Information:
-{context}
-Question: {question}
-Helpful Answer:
-"""
-QA_PROMPT = PromptTemplate(input_variables=["context", "question"], template=QA_TEMPLATE_TEXT)
-
-# Custom Cypher Generation Prompt 
-CYPHER_GENERATION_TEMPLATE = """
-You are an expert Cypher query generator. Your goal is to create flexible, case-insensitive queries that can handle typos and variations.
-Given a graph schema and a user question, create a Cypher query to retrieve the information.
-Use only the provided relationship types and properties in the schema.
-
-**Querying Rules:**
-1.  **Always use `CONTAINS` for string matching.** Do NOT use `=`. This helps with typos and variations.
-2.  **Always be case-insensitive.** Use `toLower()` on both the database property and the search term.
-3.  **Use keywords.** From the user's question, extract the main, most important keywords. Do not use long, full sentences in the query.
-    * **Good:** `toLower(p.name) CONTAINS toLower('tenda mx3')`
-    * **Bad:** `toLower(p.name) CONTAINS toLower('tenda mx3 2-pack mesh wi-fi 6 system')`
-    * **Bad:** `toLower(p.name) = toLower('security camera')`
-
-**Example for a CATEGORY:**
-Question: "what are my options for security cameras?"
-Cypher: `MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE toLower(c.name) CONTAINS toLower('security camera') RETURN p.name, p.price`
-
-**Example for a PRODUCT:**
-Question: "how much is the prolink ds-3103"
-Cypher: `MATCH (p:Product) WHERE toLower(p.name) CONTAINS toLower('prolink ds-3103') RETURN p.price`
-
-Schema:
-{schema}
-
-Question: {question}
-Cypher Query:
-"""
-CYPHER_PROMPT = PromptTemplate(input_variables=["schema", "question"], template=CYPHER_GENERATION_TEMPLATE)
-
-neo4j_qa_chain = GraphCypherQAChain.from_llm(
-    llm=llm,
-    graph=graph,
-    verbose=True,
-    allow_dangerous_requests=True,
-    qa_prompt=QA_PROMPT,
-    cypher_prompt=CYPHER_PROMPT
-)
-print("Neo4j QA Chain service initialized.")
+    print(f"Error initializing Neo4j connection: {e}")
+    print("Neo4j service will be unavailable until connection is restored.")
+    neo4j_available = False
+    neo4j_qa_chain = None
 
 # Define ingestion logic
 class Neo4jIngestor:
@@ -115,8 +121,16 @@ class Neo4jIngestor:
 def run_graph_query(question: str) -> str:
     """Runs the QA chain for a given question."""
     print(f"Neo4j Service: Received query: {question}")
-    result = neo4j_qa_chain.invoke({"query": question})
-    return result.get('result', "Error: No result found.")
+    
+    if not neo4j_available or neo4j_qa_chain is None:
+        return "Error: Neo4j database is currently unavailable. Please try again later."
+    
+    try:
+        result = neo4j_qa_chain.invoke({"query": question})
+        return result.get('result', "Error: No result found.")
+    except Exception as e:
+        print(f"Error during Neo4j query: {e}")
+        return f"Error: {str(e)}"
 
 def run_neo4j_ingestion() -> int:
     """Clears and re-loads the Neo4j database."""
