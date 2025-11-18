@@ -89,7 +89,7 @@ except Exception as e:
     
     # Define ingestion logic
 class Neo4jIngestor:
-    def init(self, uri, user, password):
+    def __init__(self, uri, user, password): 
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self.driver.verify_connectivity()
     def close(self):
