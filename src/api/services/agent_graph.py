@@ -46,7 +46,29 @@ def query_graph_db(state: AgentState) -> AgentState:
         response.raise_for_status() 
         
         result = response.json()
-        intermediate_steps.append({"tool": "neo4j_qa", "result": result['result']})
+        result_text = result.get('result', "Error: No result found.")
+        
+        # Check if the result contains no relevant information
+        # Common indicators of empty/no results from Neo4j
+        no_results_indicators = [
+            "No result found", 
+            "Error", 
+            "No data", 
+            "not found", 
+            "No information",
+            "[]"
+        ]
+        
+        has_results = not any(indicator.lower() in result_text.lower() for indicator in no_results_indicators)
+        
+        if has_results:
+            intermediate_steps.append({"tool": "neo4j_qa", "result": result_text})
+        else:
+            intermediate_steps.append({
+                "tool": "neo4j_qa", 
+                "result": result_text,
+                "no_results": True
+            })
 
     except Exception as e:
         print(f"Error querying Neo4j service: {e}")
@@ -96,8 +118,9 @@ You are an expert router agent. Your task is to analyze the user's question and 
 You must output a JSON object with two keys: "reasoning" and "route".
 
 The "route" key must be one of three values:
+
 1. 'graph_db': Use this for questions about specific product details, prices, categories, features, counts, or relationships.
-   This includes ANY question asking for a list of products, product options, or product attributes.
+   This includes ANY question asking for specific product information, prices, or comparing products.
    Examples:
    - "What's the price of X?"
    - "How many Y products are there?"
@@ -105,17 +128,19 @@ The "route" key must be one of three values:
    - "What router options do I have?"
    - "Show me your security cameras."
    - "Do you have any Tenda routers?"
+   - "List all products"
 
-2. 'vector_db': Use this for general, open-ended, or semantic questions about company information, website content, social media posts, customer feedback, engagement metrics (comments, shares, reactions, likes), or comparisons not based on structured attributes.
+2. 'vector_db': Use this for questions about company services, procedures, website content, social media posts, customer feedback, engagement metrics, or general company information that would be found on websites or social media.
+   This includes questions about how to do something, what services are offered, company information from scraped sources, or general company details.
    Examples:
+   - "What services do you provide?"
+   - "How to get a fiber connection?"
    - "What are recent comments about our service?"
-   - "Summarize our latest blog post."
-   - "Give me info on fiber products."
    - "Tell me about the company's mission."
-   - "What's the latest news on LinkedIn?"
-   - "How many shares and reactions do our posts have?"
-   - "What are the engagement metrics for SLT posts?"
-   - "Show me recent social media activity."
+   - "What's on your website about broadband?"
+   - "What are your internet packages?"
+   - "How to apply for services?"
+   - "What are your business solutions?"
 
 3. 'general': Use this for conversational questions, greetings, small talk, or questions that don't require database lookups.
    Examples:
@@ -160,18 +185,29 @@ You are a helpful AI assistant for SLT-MOBITEL. Your job is to answer the user's
 
 IMPORTANT RULES:
 1. NEVER use your general knowledge to answer questions.
-2. If the context is empty, contains an error, or says "No relevant information found", you MUST respond with "I'm sorry, I could not find any specific information about that in our knowledge base."
+2. If all contexts say "No relevant information found", respond with "I'm sorry, I could not find any specific information about that in our knowledge base."
 3. NEVER generate responses about unrelated topics (like dietary fiber when asked about internet fiber products).
-4. If Neo4j returned no results for a product query, do NOT generate general knowledge responses.
+4. If Neo4j has no product results but ChromaDB has company/service information, use the ChromaDB information.
+
+For handling multiple data sources in context:
+- If you see "vector_db_general" tool results, these contain company/service information from website/social media
+- If you see "vector_db_fallback" tool results, these contain additional company information when Neo4j was empty
+- If you see "neo4j_qa" results, these contain specific product information
+- Prioritize the most relevant information source for the user's question
 
 For questions about SLT products:
-- If Neo4j has no results for the specific product category, respond with: "I couldn't find specific information about [product type] in our current product database. You may want to check our official website or contact our customer service for the most up-to-date information."
+- Use Neo4j product information when available
+- If Neo4j has no results, use any ChromaDB company information about products/services
+- If no product information exists, respond with: "I couldn't find specific information about [product type] in our current product database. You may want to check our official website or contact our customer service for the most up-to-date information."
+
+For questions about SLT services and procedures:
+- Use ChromaDB information about company services, procedures, and website content
+- Format service information clearly and provide any mentioned contact details or website links
 
 For questions about engagement metrics (comments, reactions, shares, likes):
 - Look for documents with metadata containing: likes_count, shares_count, comments_count, reactions_count
 - Extract metrics from the metadata, not the content
 - Format as: "Post: [post summary] - Likes: [count], Shares: [count], Comments: [count], Reactions: [count]"
-- If specific counts are not available, say so explicitly
 
 When showing social media content:
 - For posts: "[post content] - from [source]"
@@ -194,7 +230,7 @@ print("Synthesis chain created.")
 def generate_response(state: AgentState) -> AgentState:
     """
     Generates the final response using LLM based on chat history and intermediate steps.
-    If Neo4j returns no results for product queries, automatically queries ChromaDB as fallback.
+    For general questions, queries ChromaDB first. If Neo4j returns no results, queries ChromaDB as fallback.
     """
     print("---NODE: generate_response---")
     question = state["question"]
@@ -203,27 +239,32 @@ def generate_response(state: AgentState) -> AgentState:
     
     # Check if this is a general question
     original_route = state.get("route", "")
+    
     if original_route == "general":
-        # Handle general/greeting questions directly
-        if any(greeting in question.lower() for greeting in ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]):
-            response = "Hello! I'm your SLT-MOBITEL assistant. How can I help you today? You can ask me about our products, services, or general company information."
-        elif any(thanks in question.lower() for thanks in ["thank", "thanks", "thank you"]):
-            response = "You're welcome! Is there anything else I can help you with?"
-        elif any(ability in question.lower() for ability in ["what can you", "what do you", "how can you", "help"]):
-            response = "I can help you with information about SLT-MOBITEL products and services. You can ask about specific product prices, categories, features, or general company information from our website and social media."
-        else:
-            response = "I'm here to help you with information about SLT-MOBITEL products and services. You can ask about specific products, prices, or general company information."
-        
-        updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=response)]
-        return {"generation": response, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
+        print("General question detected, querying ChromaDB for company information...")
+        try:
+            response = httpx.post(
+                f"{API_BASE_URL}/db/vector/search", 
+                json={"question": question},
+                timeout=60.0
+            )
+            response.raise_for_status()
+            
+            chroma_result = response.json().get("result", "No relevant information found.")
+            if "No relevant information" not in chroma_result:
+                # Add ChromaDB result as context for general question
+                intermediate_steps.append({"tool": "vector_db_general", "result": chroma_result})
+                print(f"ChromaDB found for general question: {chroma_result[:100]}...")
+            else:
+                print("ChromaDB returned no relevant information for general question.")
+        except Exception as e:
+            print(f"Error querying ChromaDB for general question: {e}")
     
     # Check if Neo4j returned no results for a product query
     neo4j_no_results = False
     for step in intermediate_steps:
         if (step.get("tool") == "neo4j_qa" and 
-            ("No result found" in str(step.get("result", "")) or 
-             "Error" in str(step.get("result", "")) or
-             step.get("no_results", False))):
+            step.get("no_results", False)):
             neo4j_no_results = True
             break
     
