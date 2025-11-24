@@ -230,7 +230,8 @@ print("Synthesis chain created.")
 def generate_response(state: AgentState) -> AgentState:
     """
     Generates the final response using LLM based on chat history and intermediate steps.
-    For general questions, queries ChromaDB first. If Neo4j returns no results, queries ChromaDB as fallback.
+    For greetings, responds directly. For other general questions, queries ChromaDB first. 
+    If Neo4j returns no results, queries ChromaDB as fallback.
     """
     print("---NODE: generate_response---")
     question = state["question"]
@@ -240,25 +241,41 @@ def generate_response(state: AgentState) -> AgentState:
     # Check if this is a general question
     original_route = state.get("route", "")
     
+    # Handle greetings directly without querying databases
     if original_route == "general":
-        print("General question detected, querying ChromaDB for company information...")
-        try:
-            response = httpx.post(
-                f"{API_BASE_URL}/db/vector/search", 
-                json={"question": question},
-                timeout=60.0
-            )
-            response.raise_for_status()
-            
-            chroma_result = response.json().get("result", "No relevant information found.")
-            if "No relevant information" not in chroma_result:
-                # Add ChromaDB result as context for general question
-                intermediate_steps.append({"tool": "vector_db_general", "result": chroma_result})
-                print(f"ChromaDB found for general question: {chroma_result[:100]}...")
-            else:
-                print("ChromaDB returned no relevant information for general question.")
-        except Exception as e:
-            print(f"Error querying ChromaDB for general question: {e}")
+        if any(greeting in question.lower() for greeting in ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]):
+            response = "Hello! I'm your SLT-MOBITEL assistant. How can I help you today? You can ask me about our products, services, or general company information."
+        elif any(thanks in question.lower() for thanks in ["thank", "thanks", "thank you"]):
+            response = "You're welcome! Is there anything else I can help you with?"
+        elif any(ability in question.lower() for ability in ["what can you", "what do you", "how can you", "help"]):
+            response = "I can help you with information about SLT-MOBITEL products and services. You can ask about specific product prices, categories, features, or general company information from our website and social media."
+        else:
+            # For other general questions, query ChromaDB for company information
+            print("General question detected, querying ChromaDB for company information...")
+            try:
+                response = httpx.post(
+                    f"{API_BASE_URL}/db/vector/search", 
+                    json={"question": question},
+                    timeout=60.0
+                )
+                response.raise_for_status()
+                
+                chroma_result = response.json().get("result", "No relevant information found.")
+                if "No relevant information" not in chroma_result:
+                    # Add ChromaDB result as context for general question
+                    intermediate_steps.append({"tool": "vector_db_general", "result": chroma_result})
+                    print(f"ChromaDB found for general question: {chroma_result[:100]}...")
+                else:
+                    print("ChromaDB returned no relevant information for general question.")
+                    # For general questions with no results, provide a helpful response
+                    response = "I'm here to help you with information about SLT-MOBITEL products and services. You can ask about specific products, prices, or general company information."
+                    updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=response)]
+                    return {"generation": response, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
+            except Exception as e:
+                print(f"Error querying ChromaDB for general question: {e}")
+                response = "I'm here to help you with information about SLT-MOBITEL products and services. You can ask about specific products, prices, or general company information."
+                updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=response)]
+                return {"generation": response, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
     
     # Check if Neo4j returned no results for a product query
     neo4j_no_results = False
@@ -289,18 +306,21 @@ def generate_response(state: AgentState) -> AgentState:
         except Exception as e:
             print(f"Error querying ChromaDB fallback: {e}")
     
-    context_str = "\n".join([str(step) for step in intermediate_steps])
-    history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history])
+    # Only run synthesis if we have intermediate steps or this isn't a direct response
+    if original_route != "general" or not any(greeting in question.lower() for greeting in ["hello", "hi", "hey", "good morning", "good afternoon", "good evening", "thank", "thanks", "what can you", "what do you", "how can you", "help"]):
+        context_str = "\n".join([str(step) for step in intermediate_steps])
+        history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history])
 
-    final_answer = synthesis_chain.invoke({
-        "question": question,
-        "intermediate_steps": context_str,
-        "chat_history": history_str 
-    })
-    print(f"Generated final answer: {final_answer}")
+        final_answer = synthesis_chain.invoke({
+            "question": question,
+            "intermediate_steps": context_str,
+            "chat_history": history_str 
+        })
+        print(f"Generated final answer: {final_answer}")
+        response = final_answer
     
-    updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=final_answer)]
-    return {"generation": final_answer, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
+    updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=response)]
+    return {"generation": response, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
 print("Node 'generate_response' defined.") 
 
 # Build and Compile the Graph
