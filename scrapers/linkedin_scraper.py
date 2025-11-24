@@ -1,132 +1,99 @@
-from playwright.async_api import async_playwright
+from apify_client import ApifyClient
+from dotenv import load_dotenv
+import os
 import json
 from datetime import datetime
-import os
-from dotenv import load_dotenv
-import asyncio
 
-load_dotenv()
+load_dotenv() 
 
 class LinkedInScraper:
+    APIFY_ACTOR_ID = "supreme_coder/linkedin-post" 
+
     def __init__(self, company_url, max_posts=10):
-        self.company_url = company_url
+        self.company_url = company_url.strip()
+        
+        valid_prefixes = [
+            'https://www.linkedin.com/company/',    # Main domain
+            'https://linkedin.com/company/',        # Main domain without www
+            'http://www.linkedin.com/company/',     # HTTP main domain
+            'http://linkedin.com/company/',         # HTTP main domain without www
+            'https://lk.linkedin.com/company/',     # Sri Lanka regional domain
+            'https://in.linkedin.com/company/',     # India regional domain
+            'https://ca.linkedin.com/company/',     # Canada regional domain
+            'https://au.linkedin.com/company/',     # Australia regional domain
+            'https://fr.linkedin.com/company/',     # France regional domain
+            'https://de.linkedin.com/company/',     # Germany regional domain
+            'https://jp.linkedin.com/company/',     # Japan regional domain
+            'https://br.linkedin.com/company/',     # Brazil regional domain
+        ]
+        
+        if not any(self.company_url.startswith(prefix) for prefix in valid_prefixes):
+            raise ValueError(f"Company URL must start with one of: {', '.join(valid_prefixes)}")
+        
         self.max_posts = max_posts
-        script_dir = os.path.dirname(__file__)
+        
+        self.api_token = os.getenv("APIFY_TOKEN")
+        if not self.api_token:
+            raise ValueError("APIFY_TOKEN not found in environment variables.")
+
+        # Setup output directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
         self.output_dir = os.path.join(script_dir, '..', 'data')
         os.makedirs(self.output_dir, exist_ok=True)
         self.output_file = os.path.join(self.output_dir, "linkedin_data.json")
 
-    async def scrape(self):
-        data = []
-        page_title = "Unknown LinkedIn Page"
+    def scrape(self):
+        print(f"📡 Initializing Apify Client for LinkedIn scraping...")
+        client = ApifyClient(self.api_token)
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
-            context = await browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            )
-            page = await context.new_page()
-
-            try:
-                print(f"🔍 Visiting {self.company_url} ...")
-                await page.goto(self.company_url, timeout=90000)
-                await page.wait_for_timeout(7000)
-
-                # Handle pop-up
-                try:
-                    overlay = page.locator('div.modal__overlay--visible').first
-                    if await overlay.is_visible():
-                        print("Popup found. Clicking overlay...")
-                        await overlay.click(position={'x': 10, 'y': 10})
-                        await page.wait_for_timeout(3000)
-                except:
-                    print("No popup found.")
-
-                # Scroll to load posts
-                print("Scrolling page...")
-                for i in range(3):
-                    await page.mouse.wheel(0, 3000)
-                    await page.wait_for_timeout(3000)
-
-                page_title = await page.title()
-                print(f"Page title: {page_title}")
-
-                # Select posts
-                post_selector = "article[data-activity-urn]"
-                posts = await page.locator(post_selector).all()
-                posts_to_process = posts[:self.max_posts]
-                print(f"Found {len(posts_to_process)} posts.")
-
-                # Extract posts
-                for i, post in enumerate(posts_to_process, start=1):
-                    print(f"\n--- Scraping Post {i} ---")
-                    post_text = ""
-                    timestamp = ""
-
-                    try:
-                        # Expand …more
-                        see_more_button = post.locator('button[data-feed-action="see-more-post"]')
-                        if await see_more_button.is_visible():
-                            await see_more_button.click()
-                            await page.wait_for_timeout(500)
-
-                        # Extract text
-                        text_elements = await post.locator(
-                            'p[data-test-id="main-feed-activity-card__commentary"]'
-                        ).all()
-
-                        if text_elements:
-                            texts = [await elem.inner_text() for elem in text_elements]
-                            post_text = "\n".join(texts).strip()
-                            print(f"Extracted text: {post_text[:100]}...")
-
-                        # Extract timestamp
-                        try:
-                            time_elem = post.locator("span.flex > time").first
-                            timestamp = await time_elem.inner_text()
-                        except:
-                            timestamp = ""
-
-                        if post_text:
-                            data.append({
-                                "post_number": i,
-                                "post_text": post_text,
-                                "timestamp": timestamp,
-                                "page_title": page_title,
-                                "source_url": self.company_url
-                            })
-
-                    except Exception as e:
-                        print(f"Error scraping post {i}: {e}")
-                        data.append({
-                            "post_number": i,
-                            "post_text": "Error scraping",
-                            "error": str(e)
-                        })
-
-            except Exception as e:
-                print(f"CRITICAL ERROR: {e}")
-
-            finally:
-                print("Closing browser...")
-                await browser.close()
-
-        # Save JSON
-        output = {
-            "timestamp": datetime.now().isoformat(),
-            "page_title": page_title,
-            "posts_scraped": len([item for item in data if item.get("post_text") not in ["", None]]),
-            "data": data
+        run_input = {
+            "urls": [self.company_url],          
+            "limitPerSource": self.max_posts,    
+            "maxComments": 2,                    
+            "maxLikes": 2,                       
+            "rawData": False,                    
         }
 
-        with open(self.output_file, "w", encoding="utf-8") as f:
-            json.dump(output, f, ensure_ascii=False, indent=2)
+        print(f"🚀 Starting Apify Actor: {self.APIFY_ACTOR_ID} for {self.company_url} (Max {self.max_posts} posts)...")
+        
+        try:
+            # Run the Actor and wait for it to finish
+            run = client.actor(self.APIFY_ACTOR_ID).call(
+                run_input=run_input,
+                timeout_secs=900 # 15 minute timeout
+            )
 
-        print(f"✅ Saved LinkedIn data → {self.output_file}")
-        return data
+            dataset_client = client.dataset(run["defaultDatasetId"])
+            dataset_items = dataset_client.list_items().items
+            
+            # Prepare the final output structure
+            output = {
+                "timestamp": datetime.now().isoformat(),
+                "source_url": self.company_url,
+                "posts_scraped": len(dataset_items),
+                "data": dataset_items
+            }
 
+            # Save data to JSON file
+            with open(self.output_file, "w", encoding="utf-8") as f:
+                json.dump(output, f, ensure_ascii=False, indent=2)
+            
+            print(f"✅ LinkedIn data saved to {self.output_file}. Scraped {len(dataset_items)} posts.")
+            
+            return dataset_items
 
-# Run directly (optional)
+        except Exception as e:
+            print(f"🚨 Error during Apify LinkedIn scraping process: {e}")
+            return []
+
 if __name__ == "__main__":
-    scraper = LinkedInScraper("https://lk.linkedin.com/company/srilankatelecom", max_posts=5)
-    asyncio.run(scraper.scrape())
+    print("--- Running LinkedIn Scraper Directly ---")
+    linkedin_company_url = "https://www.linkedin.com/company/srilankatelecom"  
+    
+    try:
+        scraper = LinkedInScraper(linkedin_company_url, max_posts=10)  # Limit to 10 posts
+        scraped_data = scraper.scrape()
+    except ValueError as e:
+        print(f"Configuration Error: {e}")
+
+    print("--- LinkedIn Scraper Finished ---")

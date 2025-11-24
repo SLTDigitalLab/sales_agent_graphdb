@@ -27,7 +27,7 @@ async def main_scraper():
     if li_url:
         print(f"\n--- Starting LinkedIn Scraper for {li_url} ---")
         li = LinkedInScraper(li_url, max_posts=5)
-        await li.scrape() 
+        li.scrape()  
     else:
         print("\nSkipping LinkedIn Scraper: 'linkedin_url' not found in config.json")
     
