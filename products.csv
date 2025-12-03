@@ -1,6 +1,41 @@
-sku,product_name,price,category_name
-TND-MX3,Tenda MX3 2-Pack Mesh Wi-Fi 6 System,26625.00,Wi-Fi Devices
-PLK-3103,PROLINK DS-3103 Dual Band Outdoor Security Camera,14900.00,Security Cameras
-EMK-GM4,eMark GM4 Mini UPS,11410.00,Power Backups
-PLK-PRS1140,Prolink PRS1140 ADSL Router,8460.00,ADSL Routers
-TND-AC2100,PROLINK Xtend Pro AC2100 Wi-Fi Mesh System,23300.00,Wi-Fi Devices
+sku,product_name,price,category_name,url
+GEN-EMA18,Emark Gm4 Mini Ups,11410.0,Offers,https://www.lifestore.lk/product/emark-gm4-mini-ups
+GEN-CLE32,Clean Power Mini Surge Protector,4795.0,Offers,https://www.lifestore.lk/product/clean-power-mini-surge-protector
+GEN-EMA21,Emark Laptop Pn 1570P,70995.0,Offers,https://www.lifestore.lk/product/emark-laptop-pn-1570p
+GEN-D L34,D Link Ac1200 Wi Fi Range Extender,15045.0,Offers,https://www.lifestore.lk/product/d-link-ac1200-wi-fi-range-extender
+GEN-EMA28,Emark Laptop Pn1574P 1068Ng7,145970.0,Offers,https://www.lifestore.lk/product/emark-laptop-pn1574p-1068ng7
+GEN-ALC27,Alcatel T28 Basic Telephone,5595.0,Offers,https://www.lifestore.lk/product/alcatel-t28-basic-telephone
+GEN-BAS28,Basic Pstn Phone D Top Dt100,3360.0,Offers,https://www.lifestore.lk/product/basic-pstn-phone-d-top-dt100
+GEN-EMA29,Emark Laptop Pn 1574P 1038Ng7,128930.0,Offers,https://www.lifestore.lk/product/emark-laptop-pn-1574p-1038ng7
+GEN-CUD43,Cudy Ax1800 Wi Fi 6 Mesh System Triple Pack,62895.0,Offers,https://www.lifestore.lk/product/cudy-ax1800-wi-fi-6-mesh-system-triple-pack
+GEN-COM27,Comstox Si001 Cli Telephone,5325.0,Offers,https://www.lifestore.lk/product/comstox-si001-cli-telephone
+GEN-CUD41,Cudy Ax1800 Wi Fi 6 Mesh System Twin Pack,45200.0,Offers,https://www.lifestore.lk/product/cudy-ax1800-wi-fi-6-mesh-system-twin-pack
+GEN-BRA16,Bravo Power Tank,5635.0,Offers,https://www.lifestore.lk/product/bravo-power-tank
+GEN-TP 30,Tp Link Wireless N Usb Adapter,2115.0,Wi-Fi Devices,https://www.lifestore.lk/product/tp-link-wireless-n-usb-adapter
+GEN-PRO39,Prolink Dh5201 Dual Band Wi Fi Extender,13450.0,Wi-Fi Devices,https://www.lifestore.lk/product/prolink-dh5201-dual-band-wi-fi-extender
+GEN-PRO28,Prolink Wireless Usb Adapter,5540.0,Wi-Fi Devices,https://www.lifestore.lk/product/prolink-wireless-usb-adapter
+GEN-SIY46,Siyol Hg1200 Wi Fi Access Point Range Extender,9585.0,Wi-Fi Devices,https://www.lifestore.lk/product/siyol-hg1200-wi-fi-access-point-range-extender
+GEN-CUD41,Cudy Ac1200 Gigabit Wireless Access Point,22100.0,Wi-Fi Devices,https://www.lifestore.lk/product/cudy-ac1200-gigabit-wireless-access-point
+GEN-PRO30,Prolink Pen1201 Wi Fi Extender,11985.0,Wi-Fi Devices,https://www.lifestore.lk/product/prolink-pen1201-wi-fi-extender
+GEN-TEN36,Tenda Mx3 2 Pack Mesh Wi Fi 6 System,26625.0,Wi-Fi Devices,https://www.lifestore.lk/product/tenda-mx3-2-pack-mesh-wi-fi-6-system
+GEN-CUD36,Cudy Ac1200 Dual Band Range Extender,14380.0,Wi-Fi Devices,https://www.lifestore.lk/product/cudy-ac1200-dual-band-range-extender
+GEN-MYL25,Mylion Mu68W Power Backup,6015.0,Power Backup,https://www.lifestore.lk/product/mylion-mu68w-power-backup
+GEN-AJ 27,Aj Mini 6X Ups Power Backup,9170.0,Power Backup,https://www.lifestore.lk/product/aj-mini-6x-ups-power-backup
+GEN-MYL25,Mylion Mu26W Power Backup,4180.0,Power Backup,https://www.lifestore.lk/product/mylion-mu26w-power-backup
+GEN-MYL25,Mylion Mu48W Power Backup,5010.0,Power Backup,https://www.lifestore.lk/product/mylion-mu48w-power-backup
+GEN-POW22,Powerlast Power Backup,5595.0,Power Backup,https://www.lifestore.lk/product/powerlast-power-backup
+GEN-ALC27,Alcatel S280 Cordless Phone,13450.0,Telephones,https://www.lifestore.lk/product/alcatel-s280-cordless-phone
+GEN-VIN17,Vintage Telephone,10510.0,Telephones,https://www.lifestore.lk/product/vintage-telephone
+GEN-PRO29,Prolink Hcd130C Cli Telephone,6990.0,Telephones,https://www.lifestore.lk/product/prolink-hcd130c-cli-telephone
+GEN-PRO28,Prolink Hcd52C Cli Telephone,6490.0,Telephones,https://www.lifestore.lk/product/prolink-hcd52c-cli-telephone
+GEN-POW37,Power Adaptor Motorola Cordless Phone,775.0,Telephones,https://www.lifestore.lk/product/power-adaptor-motorola-cordless-phone
+GEN-PRO29,Prolink Ha100 Basic Telephone,4250.0,Telephones,https://www.lifestore.lk/product/prolink-ha100-basic-telephone
+GEN-ALC25,Alcatel T58 Cli Telephone,8490.0,Telephones,https://www.lifestore.lk/product/alcatel-t58-cli-telephone
+GEN-EMA25,Emark W159 Cordless Phone,11895.0,Telephones,https://www.lifestore.lk/product/emark-w159-cordless-phone
+GEN-EMA24,Emark Hcd 211N Cli Phone,4895.0,Telephones,https://www.lifestore.lk/product/emark-hcd-211n-cli-phone
+GEN-PRO30,Prolink Dl 7306 Cat4 4G Router,18640.0,Mobile Routers,https://www.lifestore.lk/product/prolink-dl-7306-cat4-4g-router
+GEN-PRO35,Prolink Dl 7202 Mobile Wi Fi Router,14300.0,Mobile Routers,https://www.lifestore.lk/product/prolink-dl-7202-mobile-wi-fi-router
+GEN-COM33,Comstox Zlt T10 Max 4G Lte Router,9900.0,Mobile Routers,https://www.lifestore.lk/product/comstox-zlt-t10-max-4g-lte-router
+GEN-4GL22,4Glte External Antenna,5500.0,Mobile Routers,https://www.lifestore.lk/product/4glte-external-antenna
+GEN-SIY25,Siyol Pocket Mi Fi Router,8990.0,Mobile Routers,https://www.lifestore.lk/product/siyol-pocket-mi-fi-router
+GEN-PRO36,Prolink Dl 7203E Mobile Mi Fi Router,19890.0,Mobile Routers,https://www.lifestore.lk/product/prolink-dl-7203e-mobile-mi-fi-router
