@@ -193,10 +193,11 @@ For handling multiple data sources in context:
 - If you see "vector_db_general" tool results, these contain company/service information from website/social media
 - If you see "vector_db_fallback" tool results, these contain additional company information when Neo4j was empty
 - If you see "neo4j_qa" results, these contain specific product information
-- Prioritize the most relevant information source for the user's question
 
 For questions about SLT products:
-- Use Neo4j product information when available
+- If the user asked a general question like "what products do you have" or "what products do you sell" and Neo4j returned multiple products, DO NOT list all products. Instead, respond with: "We have products from various categories including [list some sample categories like Wi-Fi Devices, Power Backups, Telephones, Routers, etc.]. What type of product are you interested in?"
+- If the user asked for specific products (like "routers", "telephones", etc.) and Neo4j returned relevant products, format them nicely with names, prices, and links
+- Use Neo4j product information when available for specific product queries
 - If Neo4j has no results, use any ChromaDB company information about products/services
 - If no product information exists, respond with: "I couldn't find specific information about [product type] in our current product database. You may want to check our official website or contact our customer service for the most up-to-date information."
 
