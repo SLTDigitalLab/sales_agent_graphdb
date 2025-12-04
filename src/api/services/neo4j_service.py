@@ -13,13 +13,11 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# Go up 3 levels to get to the main project folder (from src/api/services/)
+# Navigate from src/api/services/ -> root
 PROJECT_ROOT = os.path.join(script_dir, '..', '..', '..') 
-# POINT TO THE SCRAPERS FOLDER
-CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
-# Debug print to verify path
-print(f"Neo4j Service will look for CSV at: {os.path.abspath(CSV_FILE)}")
+# Point specifically to the root folder
+CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
 # Initialize Neo4j connections
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
@@ -34,12 +32,20 @@ try:
     graph.refresh_schema()
     print("Neo4j schema refreshed for service.")
     
-    # Define QA chain
+    # --- UPDATED PROMPT HERE ---
     QA_TEMPLATE_TEXT = """
-    You are an assistant that helps to form nice and human-readable answers...
-    **IMPORTANT:** All prices are in Sri Lankan Rupees (Rs.)...
+    You are a helpful AI sales assistant for SLT Lifestore.
+    
+    **IMPORTANT GUIDELINES:**
+    1. All prices are in Sri Lankan Rupees (Rs.).
+    2. When listing products, ALWAYS format them as a Markdown link followed by the price.
+       Format: [Product Name](Product URL) - Rs. Price
+       Example: [Alcatel T28](https://example.com/t28) - Rs. 5,500.00
+    3. Do not show the raw URL separately.
+    
     Information:
     {context}
+    
     Question: {question}
     Helpful Answer:
     """
@@ -101,7 +107,6 @@ class Neo4jIngestor:
         with self.driver.session(database="neo4j") as session:
             session.run("MATCH (n) DETACH DELETE n")
     def ingest_data(self, csv_file_path):
-        # UPDATED QUERY: Now saves the URL as well
         ingest_query = """
         MERGE (c:Category {name: $row.category_name})
         MERGE (p:Product {sku: $row.sku})
@@ -113,6 +118,7 @@ class Neo4jIngestor:
         """
         count = 0
         with self.driver.session(database="neo4j") as session:
+            print(f"Reading from: {csv_file_path}") 
             with open(csv_file_path, 'r', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
@@ -135,7 +141,6 @@ def run_graph_query(question: str) -> str:
         print(f"Error during Neo4j query: {e}")
         return f"Error: {str(e)}"
 
-# Fixed: Removed unused 'source' argument to avoid errors
 def run_neo4j_ingestion() -> int:
     """Clears and re-loads the Neo4j database."""
     print("Neo4j Service: Received ingestion request.")
@@ -147,6 +152,11 @@ def run_neo4j_ingestion() -> int:
         print("Setting up constraints...")
         ingestor.setup_constraints()
         print(f"Ingesting data from {CSV_FILE}...")
+        
+        if not os.path.exists(CSV_FILE):
+             print(f"❌ Error: CSV file not found at {CSV_FILE}")
+             return 0
+
         processed_count = ingestor.ingest_data(CSV_FILE)
         print(f"Neo4j ingestion complete. Processed {processed_count} rows.")
         return processed_count

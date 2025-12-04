@@ -110,22 +110,45 @@ function App() {
     });
   };
 
+  // --- UPDATED FORMATTER FUNCTION ---
   const formatMessageContent = (content) => {
     if (!content) return '';
 
-    // Regex Explanation:
-    // \*\* : Matches the literal double asterisks (start of bold)
-    // (.*?) : Captures any characters (non-greedily) inside the asterisks ($1)
-    // \*\* : Matches the literal double asterisks (end of bold)
-    // g : Global flag, ensures all instances are replaced
-    
-    // Replaces **text** with <strong>text</strong>
-    const formattedContent = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    
-    // Optional: Add support for newlines if the API sends \n
-    // const withBreaks = formattedContent.replace(/\n/g, '<br />'); 
-    
-    return formattedContent;
+    let formatted = content;
+
+    // 1. Handle Markdown Links: [Text](URL)
+    // Regex explanation: \[([^\]]+)\] captures the text inside brackets
+    // \(([^)]+)\) captures the URL inside parentheses
+    // This replaces [Title](Link) with <a href="Link">Title</a>
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    formatted = formatted.replace(markdownLinkRegex, (match, text, url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline transition-colors font-medium">${text}</a>`;
+    });
+
+    // 2. Handle Bold (**text**) -> <strong>text</strong>
+    formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+    // 3. Handle Newlines (\n) -> <br />
+    formatted = formatted.replace(/\n/g, '<br />');
+
+    // 4. Handle Raw Links (http://... that are NOT part of a markdown link)
+    // This uses a "negative lookbehind" (?<!href=") to ensure we don't double-replace links 
+    // that we already fixed in Step 1.
+    const rawUrlRegex = /(?<!href=")(https?:\/\/[^\s<]+)/g;
+    formatted = formatted.replace(rawUrlRegex, (url) => {
+      // Clean trailing punctuation
+      const punctuation = /[.,;!?)]$/;
+      let cleanUrl = url;
+      let suffix = '';
+      
+      if (punctuation.test(url)) {
+        suffix = url.slice(-1);
+        cleanUrl = url.slice(0, -1);
+      }
+      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline transition-colors break-all">${cleanUrl}</a>${suffix}`;
+    });
+
+    return formatted;
   };
 
   return (
