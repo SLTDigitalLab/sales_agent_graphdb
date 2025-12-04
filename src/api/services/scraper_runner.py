@@ -1,15 +1,13 @@
 import asyncio
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from .config_manager import load_config
+from src.api.services.config_manager import load_config
 from scrapers.website_scraper import WebsiteScraper
 from scrapers.linkedin_scraper import LinkedInScraper
 from scrapers.facebook_scraper import FacebookScraper
-# UPDATED: Only import the scraper, NOT the ingestion service
+from scrapers.tiktok_scraper import TikTokScraper
 from scrapers.product_scraper import scrape_catalog
 
 def run_linkedin_scraper(li_url: str, max_posts: int = 5) -> str:
-    """Run LinkedIn scraper in a separate thread to avoid async conflicts."""
+    """Run LinkedIn scraper safely."""
     try:
         li = LinkedInScraper(li_url, max_posts=max_posts)
         li.scrape()
@@ -17,13 +15,16 @@ def run_linkedin_scraper(li_url: str, max_posts: int = 5) -> str:
     except Exception as e:
         return f"error: {str(e)}"
 
-def run_scraping():
-    """Run all scrapers using the current config."""
+def run_general_scraping():
+    """
+    BUTTON 1: 'Trigger General Scraping'
+    Runs: Website, LinkedIn, Facebook, AND TikTok.
+    Does NOT run Product Scraping.
+    """
     config = load_config()
-    
     results = {}
     
-    # 1. Website Scraper
+    # 1. Website
     website_url = config.get("website_url")
     if website_url:
         print(f"\n--- Starting Website Scraper for {website_url} ---")
@@ -37,17 +38,16 @@ def run_scraping():
     else:
         results["website"] = "skipped (no URL)"
 
-    # 2. LinkedIn Scraper (in separate thread)
+    # 2. LinkedIn
     li_url = config.get("linkedin_url")
     if li_url:
         print(f"\n--- Starting LinkedIn Scraper for {li_url} ---")
-        # Run in a separate thread to avoid Playwright async conflicts
         result = run_linkedin_scraper(li_url, max_posts=5)
         results["linkedin"] = result
     else:
         results["linkedin"] = "skipped (no URL)"
     
-    # 3. Facebook Scraper
+    # 3. Facebook
     fb_url = config.get("facebook_url")
     if fb_url:
         print(f"\n--- Starting Facebook Scraper for {fb_url} ---")
@@ -61,23 +61,41 @@ def run_scraping():
     else:
         results["facebook"] = "skipped (no URL)"
 
-    # 4. Product Scraper (Selenium)
-    # UPDATED: Scrapes only. Does NOT ingest into Neo4j.
-    products_url = config.get("products_url")
-    if products_url:
-        print(f"\n--- Starting Product Scraper (Selenium) ---")
+    # 4. TikTok (Now Enabled!)
+    tiktok_url = config.get("tiktok_url")
+    if tiktok_url:
+        print(f"\n--- Starting TikTok Scraper for {tiktok_url} ---")
         try:
-            # Run the selenium scraper
-            scrape_catalog()
-            
-            # The ingestion is now handled exclusively by the "Ingest to Neo4j" button
-            results["products"] = "success (scraped to products.csv)"
+            tt = TikTokScraper(tiktok_url, max_posts=10)
+            tt.scrape()
+            results["tiktok"] = "success"
+        except ValueError as e:
+            print(f"Skipping TikTok Scraper due to config error: {e}")
+            results["tiktok"] = f"config error: {str(e)}"
         except Exception as e:
-            print(f"Error in Product Scraper: {e}")
-            results["products"] = f"error: {str(e)}"
-            import traceback
-            traceback.print_exc()
+            print(f"Error in TikTok Scraper: {e}")
+            results["tiktok"] = f"error: {str(e)}"
     else:
-        results["products"] = "skipped (no URL)"
+        results["tiktok"] = "skipped (no URL)"
+
+    return results
+
+def run_product_scraping():
+    """
+    BUTTON 2: 'Product Scraping'
+    Runs ONLY: Selenium Product Scraper.
+    Saves to products.csv. Does NOT Ingest to DB.
+    """
+    results = {}
+    print(f"\n--- Starting Product Scraper (Selenium) ---")
+    try:
+        # Calls the advanced scraper (auto-discovery)
+        scrape_catalog()
+        results["products"] = "success (saved to products.csv)"
+    except Exception as e:
+        print(f"Error in Product Scraper: {e}")
+        results["products"] = f"error: {str(e)}"
+        import traceback
+        traceback.print_exc()
 
     return results
