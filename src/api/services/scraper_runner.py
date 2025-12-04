@@ -5,9 +5,8 @@ from .config_manager import load_config
 from scrapers.website_scraper import WebsiteScraper
 from scrapers.linkedin_scraper import LinkedInScraper
 from scrapers.facebook_scraper import FacebookScraper
-# NEW IMPORTS
+# UPDATED: Only import the scraper, NOT the ingestion service
 from scrapers.product_scraper import scrape_catalog
-from src.api.services.neo4j_service import run_neo4j_ingestion
 
 def run_linkedin_scraper(li_url: str, max_posts: int = 5) -> str:
     """Run LinkedIn scraper in a separate thread to avoid async conflicts."""
@@ -62,24 +61,19 @@ def run_scraping():
     else:
         results["facebook"] = "skipped (no URL)"
 
-    # 4. Product Scraper & Neo4j Ingestion (NEW)
-    # We check if products_url exists in config to know if we should run this
+    # 4. Product Scraper (Selenium)
+    # UPDATED: Scrapes only. Does NOT ingest into Neo4j.
     products_url = config.get("products_url")
     if products_url:
         print(f"\n--- Starting Product Scraper (Selenium) ---")
         try:
-            # A. Run the Selenium Scraper
-            # (It uses the hardcoded categories inside product_scraper.py, 
-            # but we use the config check to toggle it on/off)
+            # Run the selenium scraper
             scrape_catalog()
             
-            # B. Run Neo4j Ingestion
-            print("--- Starting Neo4j Ingestion ---")
-            count = run_neo4j_ingestion()
-            
-            results["products"] = f"success (scraped & ingested {count} items)"
+            # The ingestion is now handled exclusively by the "Ingest to Neo4j" button
+            results["products"] = "success (scraped to products.csv)"
         except Exception as e:
-            print(f"Error in Product Scraper/Ingestion: {e}")
+            print(f"Error in Product Scraper: {e}")
             results["products"] = f"error: {str(e)}"
             import traceback
             traceback.print_exc()
