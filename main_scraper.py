@@ -1,6 +1,7 @@
 from scrapers.website_scraper import WebsiteScraper
 from scrapers.linkedin_scraper import LinkedInScraper
 from scrapers.facebook_scraper import FacebookScraper 
+from scrapers.tiktok_scraper import TikTokScraper 
 # UPDATE: Import the function from your new script
 from scrapers.product_scraper import scrape_catalog 
 from src.api.services.config_manager import load_config
@@ -61,6 +62,20 @@ async def main_scraper():
             print(f"❌ Facebook Scraper Error: {e}")
     else:
         print("\n⚠️  Skipping Facebook Scraper: 'facebook_url' not found in config.json")
+
+    # TikTok Scraper 
+    tiktok_url = config.get("tiktok_url")  
+    if tiktok_url:
+        print(f"\n--- Starting TikTok Scraper for {tiktok_url} ---")
+        try:
+            tt = TikTokScraper(tiktok_url, max_posts=10)
+            tt.scrape()
+        except ValueError as e:
+            print(f"Skipping TikTok Scraper due to configuration error: {e}")
+        except Exception as e:
+            print(f"An error occurred running the TikTok scraper: {e}")
+    else:
+        print("\nSkipping TikTok Scraper: 'tiktok_url' not found in config.json")
 
     # Product Scraper (UPDATED FOR SELENIUM)
     # Note: We use the global START_URLS inside product_scraper.py

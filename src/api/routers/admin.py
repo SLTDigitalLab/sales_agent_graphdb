@@ -11,6 +11,7 @@ class ConfigUpdate(BaseModel):
     website_url: Optional[str] = None
     linkedin_url: Optional[str] = None
     facebook_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
 
 @router.get("/status")
 async def admin_status():
