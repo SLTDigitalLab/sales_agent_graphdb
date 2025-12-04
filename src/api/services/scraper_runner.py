@@ -61,7 +61,7 @@ def run_general_scraping():
     else:
         results["facebook"] = "skipped (no URL)"
 
-    # 4. TikTok (Now Enabled!)
+    # 4. TikTok
     tiktok_url = config.get("tiktok_url")
     if tiktok_url:
         print(f"\n--- Starting TikTok Scraper for {tiktok_url} ---")

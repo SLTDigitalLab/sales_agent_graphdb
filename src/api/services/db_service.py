@@ -75,7 +75,7 @@ def load_json_data(file_path):
 def ingest_data(data_list, source):
     """
     Converts data list into LangChain Document objects and adds them to the vector store.
-    For Facebook data, also stores engagement metrics in metadata.
+    For Facebook and TikTok data, also stores engagement metrics in metadata.
     """
     if not data_list:
         print(f"No data found for {source}. Skipping.")
@@ -89,7 +89,8 @@ def ingest_data(data_list, source):
     for i, entry in enumerate(data_list):
         if isinstance(entry, dict):
             # Handle main post content
-            text = entry.get("post_text") or entry.get("text") or entry.get("title") or entry.get("description")
+            # Prioritize 'text' for TikTok, 'post_text', then others
+            text = entry.get("text") or entry.get("post_text") or entry.get("title") or entry.get("description")
         else:
             text = str(entry)
         
@@ -116,7 +117,28 @@ def ingest_data(data_list, source):
                     "reactions_count": reactions,
                     "engagement_type": "facebook_post"
                 })
+            # Add TikTok-specific engagement metrics to metadata
+            elif source == "tiktok":
+                digg_count = entry.get("diggCount")
+                share_count = entry.get("shareCount")
+                play_count = entry.get("playCount")
+                comment_count = entry.get("commentCount")
+                # Note: collectCount might also be relevant
+                
+                print(f"  TikTok post {i}: likes={digg_count}, shares={share_count}, plays={play_count}, comments={comment_count}")
+
+                metadata.update({
+                    "post_id": entry.get("id", f"{source}_{i}"), # TikTok uses 'id' field
+                    "tiktok_url": entry.get("webVideoUrl"), # TikTok uses 'webVideoUrl' field
+                    "post_time": entry.get("createTimeISO"), # Use ISO format if available, or 'createTime'
+                    "likes_count": digg_count, # TikTok calls likes "digs" or "hearts"
+                    "shares_count": share_count,
+                    "comments_count": comment_count,
+                    "plays_count": play_count, # View count
+                    "engagement_type": "tiktok_post"
+                })
             else:
+                # Default for website, linkedin, etc.
                 metadata["post_id"] = entry.get("postId", f"{source}_{i}")
         
             # Create document with engagement metrics in metadata
@@ -203,14 +225,20 @@ def run_chroma_ingestion() -> int:
     print(f"Loading facebook data from: {facebook_json_path}")
     facebook_json = load_json_data(facebook_json_path)
 
+    tiktok_json_path = os.path.join(DATA_DIR, "tiktok_data.json")
+    print(f"Loading tiktok data from: {tiktok_json_path}")
+    tiktok_json = load_json_data(tiktok_json_path)
+
     website_data = website_json.get("data", []) if isinstance(website_json, dict) else website_json
     linkedin_data = linkedin_json.get("data", []) if isinstance(linkedin_json, dict) else linkedin_json
     facebook_data = facebook_json.get("data", []) if isinstance(facebook_json, dict) else facebook_json
+    tiktok_data = tiktok_json.get("data", []) if isinstance(tiktok_json, dict) else tiktok_json
 
     total_added = 0
     total_added += ingest_data(website_data, "website")
     total_added += ingest_data(linkedin_data, "linkedin")
     total_added += ingest_data(facebook_data, "facebook")
+    total_added += ingest_data(tiktok_data, "tiktok")
 
     try:
         count_result = vector_store._collection.count()
