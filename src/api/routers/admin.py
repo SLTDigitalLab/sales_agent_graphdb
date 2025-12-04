@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from src.api.services.config_manager import load_config, save_config
-from src.api.services.scraper_runner import run_scraping
+# UPDATED IMPORTS: Import the specific split functions
+from src.api.services.scraper_runner import run_general_scraping, run_product_scraping
 from src.api.services import db_service, neo4j_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -12,6 +13,7 @@ class ConfigUpdate(BaseModel):
     linkedin_url: Optional[str] = None
     facebook_url: Optional[str] = None
     tiktok_url: Optional[str] = None
+    products_url: Optional[str] = None # Added this field
 
 @router.get("/status")
 async def admin_status():
@@ -22,7 +24,8 @@ async def admin_status():
         "config_loaded": bool(config),
         "endpoints": [
             "/admin/config (GET/POST)",
-            "/admin/trigger-scraper (POST)",
+            "/admin/trigger-scraper (POST)",     # General Scraper
+            "/admin/scrape-products (POST)",     # Product Scraper (New)
             "/admin/ingest-chroma (POST)",
             "/admin/clear-chroma (DELETE)",
             "/admin/ingest-neo4j (POST)",
@@ -48,15 +51,29 @@ async def update_config(update: ConfigUpdate):
 
 @router.post("/trigger-scraper")
 async def trigger_scraper():
-    """Manually trigger the data scraping process."""
+    """Trigger General Scraping (Website, FB, LinkedIn, TikTok)."""
     try:
-        results = run_scraping()
+        # Calls the lightweight function
+        results = run_general_scraping()
         return {
-            "message": "Scraping completed",
+            "message": "General scraping completed",
             "results": results
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
+
+@router.post("/scrape-products")
+async def scrape_products():
+    """Trigger Product Scraping (Selenium) - Saves to CSV."""
+    try:
+        # Calls the heavy selenium function
+        results = run_product_scraping()
+        return {
+            "message": "Product scraping completed",
+            "results": results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Product scraping failed: {str(e)}")
 
 # Database Management Endpoints
 @router.post("/ingest-chroma")
@@ -100,6 +117,7 @@ async def ingest_neo4j_data():
     """Ingest product data into Neo4j."""
     print("--- Admin API: Received request to ingest Neo4j data ---")
     try:
+        # This reads the products.csv created by /scrape-products and loads it
         processed_count = neo4j_service.run_neo4j_ingestion()
         return {
             "message": "Neo4j ingestion successful.",
