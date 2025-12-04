@@ -56,6 +56,7 @@
             box-sizing: border-box;
         }
 
+        /* Primary Blue Buttons (Config & Status) */
         button {
             background: #007bff;
             color: white;
@@ -64,18 +65,29 @@
             border-radius: 4px;
             cursor: pointer;
             margin-right: 10px;
+            margin-bottom: 10px;
+            font-size: 14px;
         }
 
         button:hover {
             background: #0056b3;
         }
 
+        /* Secondary Gray Buttons (Data Management) */
         button.secondary {
             background: #6c757d;
         }
 
         button.secondary:hover {
             background: #545b62;
+        }
+
+        /* Button Rows Layout */
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
         }
 
         .status {
@@ -104,6 +116,9 @@
             border-radius: 4px;
             margin-top: 10px;
             white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -139,17 +154,35 @@
                 <label for="tiktokUrl">TikTok URL:</label>
                 <input type="url" id="tiktokUrl" placeholder="https://tiktok.com/@username">
             </div>
-            <button id="loadConfigBtn">Load Current Config</button>
-            <button id="saveConfigBtn">Save Config</button>
+            <!-- NEW: Products URL Input -->
+            <div class="form-group">
+                <label for="productsUrl">Products Page URL:</label>
+                <input type="url" id="productsUrl" placeholder="https://lifestore.lk/">
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <button id="loadConfigBtn">Load Current Config</button>
+                <button id="saveConfigBtn">Save Config</button>
+            </div>
             <div id="configStatus" class="status"></div>
         </div>
 
         <div class="section">
             <h2>Data Management</h2>
-            <button id="triggerScrapeBtn" class="secondary">Trigger Scraping</button>
-            <button id="ingestChromaBtn" class="secondary">Ingest to ChromaDB</button>
-            <button id="clearChromaBtn" class="secondary">Clear ChromaDB</button>
-            <button id="ingestNeo4jBtn" class="secondary">Ingest to Neo4j</button>
+            
+            <!-- Row 1: General Scraping & Chroma -->
+            <div class="button-row">
+                <button id="triggerScrapeBtn" class="secondary">Trigger General Scraping</button>
+                <button id="ingestChromaBtn" class="secondary">Ingest to ChromaDB</button>
+                <button id="clearChromaBtn" class="secondary">Clear ChromaDB</button>
+            </div>
+
+            <!-- Row 2: Product Scraping & Neo4j -->
+            <div class="button-row">
+                <button id="scrapeProductsBtn" class="secondary">Product Scraping</button>
+                <button id="ingestNeo4jBtn" class="secondary">Ingest to Neo4j</button>
+            </div>
+
             <div id="actionStatus" class="status"></div>
             <div id="actionResult" class="results"></div>
         </div>
@@ -164,12 +197,17 @@
             linkedinUrl: document.getElementById('linkedinUrl'),
             facebookUrl: document.getElementById('facebookUrl'),
             tiktokUrl: document.getElementById('tiktokUrl'),
+            productsUrl: document.getElementById('productsUrl'), // New Element
+            
             loadConfigBtn: document.getElementById('loadConfigBtn'),
             saveConfigBtn: document.getElementById('saveConfigBtn'),
+            
             triggerScrapeBtn: document.getElementById('triggerScrapeBtn'),
+            scrapeProductsBtn: document.getElementById('scrapeProductsBtn'), // New Button
             ingestChromaBtn: document.getElementById('ingestChromaBtn'),
             clearChromaBtn: document.getElementById('clearChromaBtn'),
             ingestNeo4jBtn: document.getElementById('ingestNeo4jBtn'),
+            
             statusBtn: document.getElementById('statusBtn'),
             configStatus: document.getElementById('configStatus'),
             actionStatus: document.getElementById('actionStatus'),
@@ -218,6 +256,7 @@
                 elements.linkedinUrl.value = config.linkedin_url || '';
                 elements.facebookUrl.value = config.facebook_url || '';
                 elements.tiktokUrl.value = config.tiktok_url || '';
+                elements.productsUrl.value = config.products_url || ''; // Load Product URL
 
                 showStatus(elements.configStatus, 'Configuration loaded successfully', false);
             } catch (error) {
@@ -234,15 +273,14 @@
                 website_url: elements.websiteUrl.value.trim() || null,
                 linkedin_url: elements.linkedinUrl.value.trim() || null,
                 facebook_url: elements.facebookUrl.value.trim() || null,
-                tiktok_url: elements.tiktokUrl.value.trim() || null
+                tiktok_url: elements.tiktokUrl.value.trim() || null,
+                products_url: elements.productsUrl.value.trim() || null // Save Product URL
             };
 
             try {
                 const response = await fetch(`${API_BASE}/admin/config`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
 
@@ -255,78 +293,83 @@
             }
         }
 
-        // Trigger scraping with progress feedback
+        // Trigger General Scraping (Web/Social)
         async function triggerScraping() {
             setLoading(elements.triggerScrapeBtn, true);
-            showStatus(elements.actionStatus, 'Scraping started... Please wait', false);
+            showStatus(elements.actionStatus, 'General scraping started (Socials/Web)...', false);
 
             try {
-                const response = await fetch(`${API_BASE}/admin/trigger-scraper`, {
-                    method: 'POST'
-                });
+                const response = await fetch(`${API_BASE}/admin/trigger-scraper`, { method: 'POST' });
                 const result = await response.json();
-
                 showResults(elements.actionResult, result);
-                showStatus(elements.actionStatus, 'Scraping completed!', false);
+                showStatus(elements.actionStatus, 'General scraping completed!', false);
             } catch (error) {
-                showStatus(elements.actionStatus, `Error during scraping: ${error.message}`, true);
+                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
             } finally {
                 setLoading(elements.triggerScrapeBtn, false);
             }
         }
 
-        // Ingest to ChromaDB with progress feedback
-        async function ingestChroma() {
-            setLoading(elements.ingestChromaBtn, true);
-            showStatus(elements.actionStatus, 'ChromaDB ingestion started... Please wait', false);
+        // Trigger Product Scraping (Selenium)
+        async function triggerProductScraping() {
+            setLoading(elements.scrapeProductsBtn, true);
+            showStatus(elements.actionStatus, 'Product scraping started... Browser will run in background.', false);
 
             try {
-                const response = await fetch(`${API_BASE}/admin/ingest-chroma`, {
-                    method: 'POST'
-                });
+                const response = await fetch(`${API_BASE}/admin/scrape-products`, { method: 'POST' });
+                const result = await response.json();
+                showResults(elements.actionResult, result);
+                showStatus(elements.actionStatus, 'Product scraping completed!', false);
+            } catch (error) {
+                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
+            } finally {
+                setLoading(elements.scrapeProductsBtn, false);
+            }
+        }
+
+        // Ingest to ChromaDB
+        async function ingestChroma() {
+            setLoading(elements.ingestChromaBtn, true);
+            showStatus(elements.actionStatus, 'Ingesting to ChromaDB...', false);
+            try {
+                const response = await fetch(`${API_BASE}/admin/ingest-chroma`, { method: 'POST' });
                 const result = await response.json();
                 showResults(elements.actionResult, result);
                 showStatus(elements.actionStatus, 'ChromaDB ingestion completed!', false);
             } catch (error) {
-                showStatus(elements.actionStatus, `Error ingesting to ChromaDB: ${error.message}`, true);
+                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
             } finally {
                 setLoading(elements.ingestChromaBtn, false);
             }
         }
 
-        // Clear ChromaDB with progress feedback
+        // Clear ChromaDB
         async function clearChroma() {
             setLoading(elements.clearChromaBtn, true);
-            showStatus(elements.actionStatus, 'Clearing ChromaDB... Please wait', false);
-
+            showStatus(elements.actionStatus, 'Clearing ChromaDB...', false);
             try {
-                const response = await fetch(`${API_BASE}/admin/clear-chroma`, {
-                    method: 'DELETE'
-                });
+                const response = await fetch(`${API_BASE}/admin/clear-chroma`, { method: 'DELETE' });
                 const result = await response.json();
                 showResults(elements.actionResult, result);
-                showStatus(elements.actionStatus, 'ChromaDB cleared successfully!', false);
+                showStatus(elements.actionStatus, 'ChromaDB cleared!', false);
             } catch (error) {
-                showStatus(elements.actionStatus, `Error clearing ChromaDB: ${error.message}`, true);
+                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
             } finally {
                 setLoading(elements.clearChromaBtn, false);
             }
         }
 
-        // Ingest to Neo4j with progress feedback
+        // Ingest to Neo4j
         async function ingestNeo4j() {
             setLoading(elements.ingestNeo4jBtn, true);
-            showStatus(elements.actionStatus, 'Neo4j ingestion started... Please wait', false);
-
+            showStatus(elements.actionStatus, 'Ingesting to Neo4j...', false);
             try {
-                const response = await fetch(`${API_BASE}/admin/ingest-neo4j`, {
-                    method: 'POST'
-                });
+                const response = await fetch(`${API_BASE}/admin/ingest-neo4j`, { method: 'POST' });
                 const result = await response.json();
                 showResults(elements.actionResult, result);
                 showStatus(elements.actionStatus, 'Neo4j ingestion completed!', false);
             } catch (error) {
-                showStatus(elements.actionStatus, `Error ingesting to Neo4j: ${error.message}`, true);
+                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
             } finally {
                 setLoading(elements.ingestNeo4jBtn, false);
             }
@@ -349,15 +392,18 @@
         // Event Listeners
         elements.loadConfigBtn.addEventListener('click', loadConfig);
         elements.saveConfigBtn.addEventListener('click', saveConfig);
+        
         elements.triggerScrapeBtn.addEventListener('click', triggerScraping);
+        elements.scrapeProductsBtn.addEventListener('click', triggerProductScraping);
+        
         elements.ingestChromaBtn.addEventListener('click', ingestChroma);
         elements.clearChromaBtn.addEventListener('click', clearChroma);
         elements.ingestNeo4jBtn.addEventListener('click', ingestNeo4j);
+        
         elements.statusBtn.addEventListener('click', checkStatus);
 
         // Load config on page load
         window.addEventListener('load', loadConfig);
     </script>
 </body>
-
 </html>
