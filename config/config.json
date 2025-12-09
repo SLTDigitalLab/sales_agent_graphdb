@@ -1,7 +1,11 @@
 {
-  "website_url": "https://www.slt.lk/home",
+  "website_urls": [
+    "https://www.slt.lk/home"
+  ],
+  "product_urls": [
+    "https://lifestore.lk/"
+  ],
   "linkedin_url": "https://lk.linkedin.com/company/srilankatelecom",
   "facebook_url": "https://www.facebook.com/SLTMobitel/",
-  "tiktok_url": "https://www.tiktok.com/@sltmobitel",
-  "products_url": "https://lifestore.lk/"
+  "tiktok_url": "https://www.tiktok.com/@sltmobitel"
 }

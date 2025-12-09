@@ -37,6 +37,8 @@
             background: #fafafa;
         }
 
+        h2 { margin-top: 0; }
+
         .form-group {
             margin-bottom: 15px;
         }
@@ -56,7 +58,24 @@
             box-sizing: border-box;
         }
 
-        /* Primary Blue Buttons (Config & Status) */
+        /* Dynamic List Styles */
+        .url-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .url-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .url-row input {
+            flex: 1;
+        }
+
+        /* Buttons */
         button {
             background: #007bff;
             color: white;
@@ -64,30 +83,39 @@
             padding: 10px 15px;
             border-radius: 4px;
             cursor: pointer;
-            margin-right: 10px;
-            margin-bottom: 10px;
             font-size: 14px;
         }
 
-        button:hover {
-            background: #0056b3;
+        button:hover { background: #0056b3; }
+
+        button.secondary { background: #6c757d; margin-right: 10px; margin-bottom: 10px; }
+        button.secondary:hover { background: #545b62; }
+
+        button.danger { background: #dc3545; margin-right: 10px; margin-bottom: 10px; }
+        button.danger:hover { background: #c82333; }
+
+        /* Icon Buttons (+ / x) */
+        .icon-btn {
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
         }
 
-        /* Secondary Gray Buttons (Data Management) */
-        button.secondary {
-            background: #6c757d;
-        }
+        .add-btn { background: #28a745; margin-top: 10px; }
+        .add-btn:hover { background: #218838; }
 
-        button.secondary:hover {
-            background: #545b62;
-        }
+        .remove-btn { background: #dc3545; }
+        .remove-btn:hover { background: #c82333; }
 
-        /* Button Rows Layout */
         .button-row {
             display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
             flex-wrap: wrap;
+            margin-bottom: 15px;
         }
 
         .status {
@@ -96,18 +124,8 @@
             border-radius: 4px;
             display: none;
         }
-
-        .status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
+        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
 
         .results {
             background: #f8f9fa;
@@ -137,11 +155,26 @@
         </div>
 
         <div class="section">
-            <h2>Scraping Configuration</h2>
+            <h2>Primary Configuration</h2>
+            
+            <!-- Dynamic Section: Website URLs -->
             <div class="form-group">
-                <label for="websiteUrl">Website URL:</label>
-                <input type="url" id="websiteUrl" placeholder="https://example.com">
+                <label>Website URLs :</label>
+                <div id="websiteUrlsContainer" class="url-list"></div>
+                <button type="button" id="addWebsiteBtn" class="add-btn icon-btn" title="Add URL">+</button>
             </div>
+
+            <!-- Dynamic Section: Product URLs -->
+            <div class="form-group">
+                <label>Product Page URLs :</label>
+                <small style="display:block; color:#666; margin-bottom:5px;">If empty, the scraper will auto-discover categories from the home page.</small>
+                <div id="productUrlsContainer" class="url-list"></div>
+                <button type="button" id="addProductBtn" class="add-btn icon-btn" title="Add URL">+</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Social Media Configuration</h2>
             <div class="form-group">
                 <label for="linkedinUrl">LinkedIn URL:</label>
                 <input type="url" id="linkedinUrl" placeholder="https://linkedin.com/company/example">
@@ -154,15 +187,10 @@
                 <label for="tiktokUrl">TikTok URL:</label>
                 <input type="url" id="tiktokUrl" placeholder="https://tiktok.com/@username">
             </div>
-            <!-- NEW: Products URL Input -->
-            <div class="form-group">
-                <label for="productsUrl">Products Page URL:</label>
-                <input type="url" id="productsUrl" placeholder="https://lifestore.lk/">
-            </div>
             
-            <div style="margin-top: 20px;">
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
                 <button id="loadConfigBtn">Load Current Config</button>
-                <button id="saveConfigBtn">Save Config</button>
+                <button id="saveConfigBtn">Save All Config</button>
             </div>
             <div id="configStatus" class="status"></div>
         </div>
@@ -170,16 +198,16 @@
         <div class="section">
             <h2>Data Management</h2>
             
-            <!-- Row 1: General Scraping & Chroma -->
+            <!-- Row 1 -->
             <div class="button-row">
                 <button id="triggerScrapeBtn" class="secondary">Trigger General Scraping</button>
                 <button id="ingestChromaBtn" class="secondary">Ingest to ChromaDB</button>
-                <button id="clearChromaBtn" class="secondary">Clear ChromaDB</button>
+                <button id="clearChromaBtn" class="danger">Clear ChromaDB</button>
             </div>
 
-            <!-- Row 2: Product Scraping & Neo4j -->
+            <!-- Row 2 -->
             <div class="button-row">
-                <button id="scrapeProductsBtn" class="secondary">Product Scraping</button>
+                <button id="scrapeProductsBtn" class="secondary">Product Scraping (Selenium)</button>
                 <button id="ingestNeo4jBtn" class="secondary">Ingest to Neo4j</button>
             </div>
 
@@ -191,90 +219,85 @@
     <script>
         const API_BASE = 'http://localhost:8000';
 
-        // DOM Elements
-        const elements = {
-            websiteUrl: document.getElementById('websiteUrl'),
-            linkedinUrl: document.getElementById('linkedinUrl'),
-            facebookUrl: document.getElementById('facebookUrl'),
-            tiktokUrl: document.getElementById('tiktokUrl'),
-            productsUrl: document.getElementById('productsUrl'), // New Element
+        // Helper: Create a URL input row with remove button
+        function createUrlRow(value = '') {
+            const div = document.createElement('div');
+            div.className = 'url-row';
             
-            loadConfigBtn: document.getElementById('loadConfigBtn'),
-            saveConfigBtn: document.getElementById('saveConfigBtn'),
+            const input = document.createElement('input');
+            input.type = 'url';
+            input.value = value;
+            input.placeholder = 'https://...';
             
-            triggerScrapeBtn: document.getElementById('triggerScrapeBtn'),
-            scrapeProductsBtn: document.getElementById('scrapeProductsBtn'), // New Button
-            ingestChromaBtn: document.getElementById('ingestChromaBtn'),
-            clearChromaBtn: document.getElementById('clearChromaBtn'),
-            ingestNeo4jBtn: document.getElementById('ingestNeo4jBtn'),
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'remove-btn icon-btn';
+            removeBtn.innerHTML = '×';
+            removeBtn.onclick = () => div.remove();
             
-            statusBtn: document.getElementById('statusBtn'),
-            configStatus: document.getElementById('configStatus'),
-            actionStatus: document.getElementById('actionStatus'),
-            statusResult: document.getElementById('statusResult'),
-            actionResult: document.getElementById('actionResult')
-        };
-
-        // Show status message
-        function showStatus(element, message, isError = false) {
-            element.textContent = message;
-            element.style.display = 'block';
-            element.className = `status ${isError ? 'error' : 'success'}`;
-            setTimeout(() => {
-                element.style.display = 'none';
-            }, 5000);
+            div.appendChild(input);
+            div.appendChild(removeBtn);
+            return div;
         }
 
-        // Show results
-        function showResults(element, data) {
-            element.textContent = JSON.stringify(data, null, 2);
-            element.style.display = 'block';
-        }
-
-        // Show loading state for buttons
-        function setLoading(button, isLoading, originalText = null) {
-            if (isLoading) {
-                button.disabled = true;
-                button.style.opacity = '0.6';
-                button.originalText = button.textContent;
-                button.textContent = 'Processing...';
-            } else {
-                button.disabled = false;
-                button.style.opacity = '1';
-                button.textContent = button.originalText || button.textContent;
+        // Helper: Render a list of URLs
+        function renderList(containerId, urls) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            if (!urls || urls.length === 0) {
+                container.appendChild(createUrlRow()); // Default empty row
+                return;
             }
+            urls.forEach(url => container.appendChild(createUrlRow(url)));
         }
 
-        // Load current configuration
+        // Helper: Get values from a list container
+        function getListValues(containerId) {
+            const container = document.getElementById(containerId);
+            const inputs = container.querySelectorAll('input');
+            const values = [];
+            inputs.forEach(input => {
+                if (input.value.trim()) values.push(input.value.trim());
+            });
+            return values;
+        }
+
+        // --- API FUNCTIONS ---
+
         async function loadConfig() {
-            setLoading(elements.loadConfigBtn, true);
+            setLoading('loadConfigBtn', true);
             try {
                 const response = await fetch(`${API_BASE}/admin/config`);
                 const config = await response.json();
 
-                elements.websiteUrl.value = config.website_url || '';
-                elements.linkedinUrl.value = config.linkedin_url || '';
-                elements.facebookUrl.value = config.facebook_url || '';
-                elements.tiktokUrl.value = config.tiktok_url || '';
-                elements.productsUrl.value = config.products_url || ''; // Load Product URL
+                // Handle Lists (convert string to list if legacy data exists)
+                let webUrls = Array.isArray(config.website_urls) ? config.website_urls : (config.website_url ? [config.website_url] : []);
+                let prodUrls = Array.isArray(config.product_urls) ? config.product_urls : (config.products_url ? [config.products_url] : []);
 
-                showStatus(elements.configStatus, 'Configuration loaded successfully', false);
+                renderList('websiteUrlsContainer', webUrls);
+                renderList('productUrlsContainer', prodUrls);
+                
+                document.getElementById('linkedinUrl').value = config.linkedin_url || '';
+                document.getElementById('facebookUrl').value = config.facebook_url || '';
+                document.getElementById('tiktokUrl').value = config.tiktok_url || '';
+
+                showStatus('configStatus', 'Configuration loaded successfully', false);
             } catch (error) {
-                showStatus(elements.configStatus, `Error loading config: ${error.message}`, true);
+                showStatus('configStatus', `Error: ${error.message}`, true);
             } finally {
-                setLoading(elements.loadConfigBtn, false);
+                setLoading('loadConfigBtn', false);
             }
         }
 
-        // Save configuration
         async function saveConfig() {
-            setLoading(elements.saveConfigBtn, true);
+            setLoading('saveConfigBtn', true);
             const config = {
-                website_url: elements.websiteUrl.value.trim() || null,
-                linkedin_url: elements.linkedinUrl.value.trim() || null,
-                facebook_url: elements.facebookUrl.value.trim() || null,
-                tiktok_url: elements.tiktokUrl.value.trim() || null,
-                products_url: elements.productsUrl.value.trim() || null // Save Product URL
+                website_urls: getListValues('websiteUrlsContainer'),
+                product_urls: getListValues('productUrlsContainer'),
+                linkedin_url: document.getElementById('linkedinUrl').value.trim() || null,
+                facebook_url: document.getElementById('facebookUrl').value.trim() || null,
+                tiktok_url: document.getElementById('tiktokUrl').value.trim() || null
             };
 
             try {
@@ -283,126 +306,95 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
-
                 const result = await response.json();
-                showStatus(elements.configStatus, result.message, false);
+                showStatus('configStatus', result.message, false);
             } catch (error) {
-                showStatus(elements.configStatus, `Error saving config: ${error.message}`, true);
+                showStatus('configStatus', `Error: ${error.message}`, true);
             } finally {
-                setLoading(elements.saveConfigBtn, false);
+                setLoading('saveConfigBtn', false);
             }
         }
 
-        // Trigger General Scraping (Web/Social)
-        async function triggerScraping() {
-            setLoading(elements.triggerScrapeBtn, true);
-            showStatus(elements.actionStatus, 'General scraping started (Socials/Web)...', false);
+        // --- SCRAPER TRIGGERS ---
 
+        async function triggerEndpoint(endpoint, btnId, statusMsg) {
+            setLoading(btnId, true);
+            showStatus('actionStatus', statusMsg, false);
             try {
-                const response = await fetch(`${API_BASE}/admin/trigger-scraper`, { method: 'POST' });
+                const response = await fetch(`${API_BASE}/admin/${endpoint}`, { method: 'POST' });
                 const result = await response.json();
-                showResults(elements.actionResult, result);
-                showStatus(elements.actionStatus, 'General scraping completed!', false);
+                showResults(result);
+                showStatus('actionStatus', 'Operation completed successfully!', false);
             } catch (error) {
-                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
+                showStatus('actionStatus', `Error: ${error.message}`, true);
             } finally {
-                setLoading(elements.triggerScrapeBtn, false);
+                setLoading(btnId, false);
             }
         }
-
-        // Trigger Product Scraping (Selenium)
-        async function triggerProductScraping() {
-            setLoading(elements.scrapeProductsBtn, true);
-            showStatus(elements.actionStatus, 'Product scraping started... Browser will run in background.', false);
-
-            try {
-                const response = await fetch(`${API_BASE}/admin/scrape-products`, { method: 'POST' });
-                const result = await response.json();
-                showResults(elements.actionResult, result);
-                showStatus(elements.actionStatus, 'Product scraping completed!', false);
-            } catch (error) {
-                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
-            } finally {
-                setLoading(elements.scrapeProductsBtn, false);
-            }
-        }
-
-        // Ingest to ChromaDB
-        async function ingestChroma() {
-            setLoading(elements.ingestChromaBtn, true);
-            showStatus(elements.actionStatus, 'Ingesting to ChromaDB...', false);
-            try {
-                const response = await fetch(`${API_BASE}/admin/ingest-chroma`, { method: 'POST' });
-                const result = await response.json();
-                showResults(elements.actionResult, result);
-                showStatus(elements.actionStatus, 'ChromaDB ingestion completed!', false);
-            } catch (error) {
-                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
-            } finally {
-                setLoading(elements.ingestChromaBtn, false);
-            }
-        }
-
-        // Clear ChromaDB
-        async function clearChroma() {
-            setLoading(elements.clearChromaBtn, true);
-            showStatus(elements.actionStatus, 'Clearing ChromaDB...', false);
-            try {
-                const response = await fetch(`${API_BASE}/admin/clear-chroma`, { method: 'DELETE' });
-                const result = await response.json();
-                showResults(elements.actionResult, result);
-                showStatus(elements.actionStatus, 'ChromaDB cleared!', false);
-            } catch (error) {
-                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
-            } finally {
-                setLoading(elements.clearChromaBtn, false);
-            }
-        }
-
-        // Ingest to Neo4j
-        async function ingestNeo4j() {
-            setLoading(elements.ingestNeo4jBtn, true);
-            showStatus(elements.actionStatus, 'Ingesting to Neo4j...', false);
-            try {
-                const response = await fetch(`${API_BASE}/admin/ingest-neo4j`, { method: 'POST' });
-                const result = await response.json();
-                showResults(elements.actionResult, result);
-                showStatus(elements.actionStatus, 'Neo4j ingestion completed!', false);
-            } catch (error) {
-                showStatus(elements.actionStatus, `Error: ${error.message}`, true);
-            } finally {
-                setLoading(elements.ingestNeo4jBtn, false);
-            }
-        }
-
-        // Check system status
-        async function checkStatus() {
-            setLoading(elements.statusBtn, true);
-            try {
-                const response = await fetch(`${API_BASE}/admin/status`);
-                const result = await response.json();
-                showResults(elements.statusResult, result);
-            } catch (error) {
-                showResults(elements.statusResult, { error: error.message });
-            } finally {
-                setLoading(elements.statusBtn, false);
-            }
-        }
-
-        // Event Listeners
-        elements.loadConfigBtn.addEventListener('click', loadConfig);
-        elements.saveConfigBtn.addEventListener('click', saveConfig);
         
-        elements.triggerScrapeBtn.addEventListener('click', triggerScraping);
-        elements.scrapeProductsBtn.addEventListener('click', triggerProductScraping);
-        
-        elements.ingestChromaBtn.addEventListener('click', ingestChroma);
-        elements.clearChromaBtn.addEventListener('click', clearChroma);
-        elements.ingestNeo4jBtn.addEventListener('click', ingestNeo4j);
-        
-        elements.statusBtn.addEventListener('click', checkStatus);
+        async function triggerDelete(endpoint, btnId, statusMsg) {
+            setLoading(btnId, true);
+            showStatus('actionStatus', statusMsg, false);
+            try {
+                const response = await fetch(`${API_BASE}/admin/${endpoint}`, { method: 'DELETE' });
+                const result = await response.json();
+                showResults(result);
+                showStatus('actionStatus', 'Operation completed successfully!', false);
+            } catch (error) {
+                showStatus('actionStatus', `Error: ${error.message}`, true);
+            } finally {
+                setLoading(btnId, false);
+            }
+        }
 
-        // Load config on page load
+        // --- UTILS ---
+        function showStatus(id, msg, isError) {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.style.display = 'block';
+            el.className = `status ${isError ? 'error' : 'success'}`;
+            setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+
+        function showResults(data) {
+            const el = document.getElementById('actionResult');
+            el.textContent = JSON.stringify(data, null, 2);
+            el.style.display = 'block';
+        }
+
+        function setLoading(id, isLoading) {
+            const btn = document.getElementById(id);
+            if (isLoading) {
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                btn.originalText = btn.textContent;
+                btn.textContent = 'Processing...';
+            } else {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                if(btn.originalText) btn.textContent = btn.originalText;
+            }
+        }
+
+        // Listeners
+        document.getElementById('addWebsiteBtn').onclick = () => document.getElementById('websiteUrlsContainer').appendChild(createUrlRow());
+        document.getElementById('addProductBtn').onclick = () => document.getElementById('productUrlsContainer').appendChild(createUrlRow());
+        
+        document.getElementById('loadConfigBtn').onclick = loadConfig;
+        document.getElementById('saveConfigBtn').onclick = saveConfig;
+        
+        document.getElementById('triggerScrapeBtn').onclick = () => triggerEndpoint('trigger-scraper', 'triggerScrapeBtn', 'General Scraping Started...');
+        document.getElementById('scrapeProductsBtn').onclick = () => triggerEndpoint('scrape-products', 'scrapeProductsBtn', 'Product Scraping Started (Selenium)...');
+        document.getElementById('ingestChromaBtn').onclick = () => triggerEndpoint('ingest-chroma', 'ingestChromaBtn', 'Ingesting to ChromaDB...');
+        document.getElementById('ingestNeo4jBtn').onclick = () => triggerEndpoint('ingest-neo4j', 'ingestNeo4jBtn', 'Ingesting to Neo4j...');
+        
+        document.getElementById('clearChromaBtn').onclick = () => triggerDelete('clear-chroma', 'clearChromaBtn', 'Clearing ChromaDB...');
+        
+        document.getElementById('statusBtn').onclick = async () => {
+            const res = await fetch(`${API_BASE}/admin/status`);
+            showResults(await res.json());
+        };
+
         window.addEventListener('load', loadConfig);
     </script>
 </body>

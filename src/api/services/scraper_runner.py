@@ -17,46 +17,54 @@ def run_linkedin_scraper(li_url: str, max_posts: int = 5) -> str:
 
 def run_general_scraping():
     """
-    BUTTON 1: 'Trigger General Scraping'
-    Runs: Website, LinkedIn, Facebook, AND TikTok.
+    Runs ONLY: Website (Multi-URL), LinkedIn, Facebook, TikTok.
     Does NOT run Product Scraping.
     """
     config = load_config()
     results = {}
     
-    # 1. Website
-    website_url = config.get("website_url")
-    if website_url:
-        print(f"\n--- Starting Website Scraper for {website_url} ---")
+    # 1. Website Scraper (Handles List or Single URL)
+    # Try to get the list 'website_urls', fall back to single 'website_url'
+    website_urls = config.get("website_urls")
+    if not website_urls:
+        single_url = config.get("website_url")
+        if single_url:
+            website_urls = [single_url]
+    
+    # Filter out empty strings
+    if website_urls:
+        website_urls = [u for u in website_urls if u.strip()]
+
+    if website_urls:
+        print(f"\n--- Starting Website Scraper for {len(website_urls)} URLs ---")
         try:
-            ws = WebsiteScraper(website_url)
+            # Pass the list directly to the Selenium Website Scraper
+            ws = WebsiteScraper(website_urls)
             ws.scrape()
-            results["website"] = "success"
+            results["website"] = f"success ({len(website_urls)} sites scraped)"
         except Exception as e:
             print(f"Error in Website Scraper: {e}")
             results["website"] = f"error: {str(e)}"
     else:
-        results["website"] = "skipped (no URL)"
+        results["website"] = "skipped (no URLs)"
 
     # 2. LinkedIn
     li_url = config.get("linkedin_url")
     if li_url:
-        print(f"\n--- Starting LinkedIn Scraper for {li_url} ---")
-        result = run_linkedin_scraper(li_url, max_posts=5)
-        results["linkedin"] = result
+        print(f"\n--- Starting LinkedIn Scraper ---")
+        results["linkedin"] = run_linkedin_scraper(li_url, max_posts=5)
     else:
         results["linkedin"] = "skipped (no URL)"
     
     # 3. Facebook
     fb_url = config.get("facebook_url")
     if fb_url:
-        print(f"\n--- Starting Facebook Scraper for {fb_url} ---")
+        print(f"\n--- Starting Facebook Scraper ---")
         try:
             fb = FacebookScraper(fb_url, max_posts=10, max_comments_per_post=5)
             fb.scrape()
             results["facebook"] = "success"
         except Exception as e:
-            print(f"Error in Facebook Scraper: {e}")
             results["facebook"] = f"error: {str(e)}"
     else:
         results["facebook"] = "skipped (no URL)"
@@ -64,16 +72,12 @@ def run_general_scraping():
     # 4. TikTok
     tiktok_url = config.get("tiktok_url")
     if tiktok_url:
-        print(f"\n--- Starting TikTok Scraper for {tiktok_url} ---")
+        print(f"\n--- Starting TikTok Scraper ---")
         try:
             tt = TikTokScraper(tiktok_url, max_posts=10)
             tt.scrape()
             results["tiktok"] = "success"
-        except ValueError as e:
-            print(f"Skipping TikTok Scraper due to config error: {e}")
-            results["tiktok"] = f"config error: {str(e)}"
         except Exception as e:
-            print(f"Error in TikTok Scraper: {e}")
             results["tiktok"] = f"error: {str(e)}"
     else:
         results["tiktok"] = "skipped (no URL)"
@@ -82,15 +86,26 @@ def run_general_scraping():
 
 def run_product_scraping():
     """
-    BUTTON 2: 'Product Scraping'
     Runs ONLY: Selenium Product Scraper.
-    Saves to products.csv. Does NOT Ingest to DB.
+    Saves to CSV. Does NOT Ingest to DB (handled by separate button).
     """
+    config = load_config()
     results = {}
+
+    # Product Scraper (Handles List or Single URL)
+    product_urls = config.get("product_urls")
+    if not product_urls:
+        single_p_url = config.get("products_url")
+        if single_p_url:
+            product_urls = [single_p_url]
+    
+    if product_urls:
+        product_urls = [u for u in product_urls if u.strip()]
+
     print(f"\n--- Starting Product Scraper (Selenium) ---")
     try:
-        # Calls the advanced scraper (auto-discovery)
-        scrape_catalog()
+        # Pass the list (or None) to the scraper function
+        scrape_catalog(custom_start_urls=product_urls)
         results["products"] = "success (saved to products.csv)"
     except Exception as e:
         print(f"Error in Product Scraper: {e}")
