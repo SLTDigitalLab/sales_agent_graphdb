@@ -188,6 +188,7 @@ IMPORTANT RULES:
 2. If all contexts say "No relevant information found", respond with "I'm sorry, I could not find any specific information about that in our knowledge base."
 3. NEVER generate responses about unrelated topics (like dietary fiber when asked about internet fiber products).
 4. If Neo4j has no product results but ChromaDB has company/service information, use the ChromaDB information.
+5. If the "Intermediate Steps Context" contains multiple entries with identical or very similar content (e.g., the same social media post repeated), consolidate them into a single entry in the final response. Do not list the same post multiple times with different numbers.
 
 For handling multiple data sources in context:
 - If you see "vector_db_general" tool results, these contain company/service information from website/social media

@@ -88,8 +88,6 @@ def ingest_data(data_list, source):
     
     for i, entry in enumerate(data_list):
         if isinstance(entry, dict):
-            # Handle main post content
-            # Prioritize 'text' for TikTok, 'post_text', then others
             text = entry.get("text") or entry.get("post_text") or entry.get("title") or entry.get("description")
         else:
             text = str(entry)
@@ -98,7 +96,7 @@ def ingest_data(data_list, source):
             # Prepare metadata based on source
             metadata = {"source": source, "type": "post"}
             
-            # Add Facebook-specific engagement metrics to metadata
+            # Facebook-specific engagement metrics to metadata
             if source == "facebook":
                 likes = entry.get("likes")
                 shares = entry.get("shares") 
@@ -117,13 +115,12 @@ def ingest_data(data_list, source):
                     "reactions_count": reactions,
                     "engagement_type": "facebook_post"
                 })
-            # Add TikTok-specific engagement metrics to metadata
+            # TikTok-specific engagement metrics to metadata
             elif source == "tiktok":
                 digg_count = entry.get("diggCount")
                 share_count = entry.get("shareCount")
                 play_count = entry.get("playCount")
                 comment_count = entry.get("commentCount")
-                # Note: collectCount might also be relevant
                 
                 print(f"  TikTok post {i}: likes={digg_count}, shares={share_count}, plays={play_count}, comments={comment_count}")
 
@@ -188,7 +185,7 @@ async def get_raw_chunks(query: str, k: int = 3) -> List[DocumentResult]:
 
 async def get_formatted_chunks(query: str, k: int = 3) -> str:
     """
-    Gets relevant documents and formats them into a single string.
+    Gets relevant documents, removes duplicates based on content, and formats them into a single string.
     """
     print(f"Chroma Service: Received formatted query: {query}")
     if not retriever:
@@ -203,8 +200,22 @@ async def get_formatted_chunks(query: str, k: int = 3) -> str:
     
     if not docs:
         return "No relevant information found in the vector database."
+    
+    # Deduplication logic
+    seen_contents = set()
+    unique_docs = []
+    for doc in docs:
+        content_key = doc.page_content.strip().lower() 
+        if content_key not in seen_contents:
+            seen_contents.add(content_key)
+            unique_docs.append(doc)
+        else:
+            print(f"  - Deduplicated document with content: {doc.page_content[:50]}...")
+    
+    if not unique_docs:
+        print("All retrieved documents were duplicates.")
         
-    return format_docs(docs)
+    return format_docs(unique_docs) 
 
 # Admin service functions
 def run_chroma_ingestion() -> int:
