@@ -3,6 +3,7 @@ import json
 import csv
 import re
 import os
+import hashlib  # <--- NEW IMPORT REQUIRED
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -18,11 +19,10 @@ BASE_URL = "https://www.lifestore.lk/"
 def setup_driver():
     """Setup invisible Chrome browser"""
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Run invisible
-    chrome_options.add_argument("--log-level=3") # Suppress warnings
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--log-level=3")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
-    # Add a real user agent
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
     service = Service(ChromeDriverManager().install())
@@ -38,10 +38,7 @@ def clean_price(price_str):
         return 0.0
 
 def discover_categories(driver):
-    """
-    Dynamically finds all product categories from the homepage.
-    Pattern: https://www.lifestore.lk/categories/{slug}
-    """
+    """Dynamically finds all product categories."""
     print(f"🕵️  Discovering categories from {BASE_URL}...")
     driver.get(BASE_URL)
     time.sleep(3) 
@@ -49,9 +46,7 @@ def discover_categories(driver):
     discovered = []
     seen_urls = set()
 
-    # UPDATED: Look for links containing '/categories/' based on your observation
     elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/categories/')]")
-
     print(f"   found {len(elements)} raw category links...")
 
     for elem in elements:
@@ -59,19 +54,14 @@ def discover_categories(driver):
             url = elem.get_attribute('href')
             name = elem.get_attribute('innerText').strip()
             
-            # Basic validation to ensure it's a real category link
             if url and name and url not in seen_urls:
-                # Filter out garbage links or empty names
                 if len(name) > 2 and "http" in url:
-                    # Clean up name (remove counts like "Wifi (4)")
                     name = re.sub(r'\(\d+\)', '', name).strip()
-                    
                     seen_urls.add(url)
                     discovered.append((url, name))
         except:
             continue
     
-    # Remove duplicates
     unique_categories = list(set(discovered))
     print(f"✅ Automatically identified {len(unique_categories)} unique categories.")
     return unique_categories
@@ -79,20 +69,16 @@ def discover_categories(driver):
 def get_product_links(driver, category_url):
     """Get all product links from a category page"""
     driver.get(category_url)
-    
-    # Scroll down to trigger lazy loading
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
     time.sleep(1)
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
     time.sleep(2)
     
     links = []
-    # Find all links that look like a product
     elements = driver.find_elements(By.TAG_NAME, 'a')
     for elem in elements:
         try:
             href = elem.get_attribute('href')
-            # Lifestore uses /product/ in the URL for individual items
             if href and '/product/' in href:
                 links.append(href)
         except:
@@ -103,7 +89,6 @@ def extract_details(driver, url, category_name):
     """Visit product page and extract visible data"""
     try:
         driver.get(url)
-        # Wait for price
         try:
             WebDriverWait(driver, 3).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "price"))
@@ -119,13 +104,17 @@ def extract_details(driver, url, category_name):
         if product_name == "Unknown":
             product_name = url.split('/product/')[-1].replace('-', ' ').title()
 
-        # 2. SKU
+        # 2. SKU (THE FIX IS HERE)
         sku = ""
         sku_tag = soup.find('span', class_='sku')
-        if sku_tag: sku = sku_tag.text.strip()
+        if sku_tag: 
+            sku = sku_tag.text.strip()
+        
+        # Fallback: Use Hash of URL to guarantee uniqueness
         if not sku: 
-            clean_name = re.sub(r'[^a-zA-Z0-9]', '', product_name)
-            sku = f"GEN-{clean_name[:6].upper()}"
+            # This creates a unique ID like 'GEN-8A4F9C2B' based on the URL
+            hash_object = hashlib.md5(url.encode())
+            sku = f"GEN-{hash_object.hexdigest()[:8].upper()}"
 
         # 3. Price
         price = 0.0
@@ -139,7 +128,6 @@ def extract_details(driver, url, category_name):
                 if amount_tag:
                     price = clean_price(amount_tag.text)
 
-        # Fallback regex
         if price == 0.0:
             page_text = soup.get_text()
             matches = re.findall(r'(?:Rs\.?|LKR)\s*([\d,]+(?:\.\d{2})?)', page_text, re.IGNORECASE)
@@ -161,7 +149,6 @@ def extract_details(driver, url, category_name):
 def save_csv(data):
     if not data: return
     
-    # Save to Root Directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.join(script_dir, '..') 
     file_path = os.path.join(project_root, 'products.csv')
@@ -182,36 +169,28 @@ def scrape_catalog():
     visited_urls = set()
 
     try:
-        # 1. Discover Categories
         categories = discover_categories(driver)
-        
-        # Fallback if discovery finds nothing (e.g. site structure changed)
         if not categories:
             print("⚠️ Auto-discovery failed. Using fallback list.")
             categories = [
                 ("https://www.lifestore.lk/categories/offers", "Offers"), 
-                ("https://www.lifestore.lk/categories/wi-fi-devices", "Wi-Fi Devices"),
-                ("https://www.lifestore.lk/categories/powerbackup", "Power Backup"),
-                ("https://www.lifestore.lk/categories/telephones", "Telephones")
+                ("https://www.lifestore.lk/categories/wi-fi-devices", "Wi-Fi Devices")
             ]
 
-        # 2. Collect Links
         product_tasks = []
         print(f"\n📡 Scanning {len(categories)} categories...")
         
         for i, (url, cat_name) in enumerate(categories):
             print(f"   [{i+1}/{len(categories)}] {cat_name}...", end="\r")
             links = get_product_links(driver, url)
-            
             for link in links:
                 if link not in visited_urls:
                     visited_urls.add(link)
                     product_tasks.append((link, cat_name))
 
         print(f"\n📦 Found {len(product_tasks)} unique products.")
-        print("   Starting extraction (This may take 5-10 mins)...")
+        print("   Starting extraction...")
 
-        # 3. Extract Data
         for i, (link, cat_name) in enumerate(product_tasks):
             print(f"[{i+1}/{len(product_tasks)}] Scraping...", end="\r")
             
@@ -219,12 +198,10 @@ def scrape_catalog():
             
             if data:
                 all_products.append(data)
-                # Save progress every 10 items
                 if i % 10 == 0: 
                     print(f"✅ {data['price']:<9} | {data['product_name'][:30]}...")
                     save_csv(all_products) 
 
-        # Final Save
         saved_path = save_csv(all_products)
         print(f"\n✅ DONE! Saved {len(all_products)} products to: {saved_path}")
         return all_products
