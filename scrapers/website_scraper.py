@@ -1,79 +1,103 @@
-import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+import time
 import json
-from datetime import datetime
 import os
+import re
+from typing import List, Union
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+from bs4 import BeautifulSoup # We bring BeautifulSoup back for cleaning
 
 class WebsiteScraper:
-    def __init__(self, base_url, max_pages=15):
-        self.base_url = base_url
-        self.visited = set()
-        self.max_pages = max_pages
-        self.data = []
-        os.makedirs("data", exist_ok=True)
-
-    def scrape_page(self, url):
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code != 200:
-                print(f"Skipping {url} (status {response.status_code})")
-                return
+    def __init__(self, urls: Union[str, List[str]]):
+        if isinstance(urls, str):
+            self.urls = [urls]
+        else:
+            self.urls = urls
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.join(script_dir, '..')
+        self.data_dir = os.path.join(project_root, 'data')
+        os.makedirs(self.data_dir, exist_ok=True)
+        self.output_file = os.path.join(self.data_dir, "website_data.json")
 
-            title = soup.title.string.strip() if soup.title else ""
+    def setup_driver(self):
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--log-level=3")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        
+        service = Service(ChromeDriverManager().install())
+        return webdriver.Chrome(service=service, options=chrome_options)
 
-            meta_desc = ""
-            meta_tag = soup.find("meta", attrs={"name": "description"})
-            if meta_tag and meta_tag.get("content"):
-                meta_desc = meta_tag["content"].strip()
+    def extract_clean_content(self, html_source):
+        """
+        Uses BeautifulSoup to remove navigation, footers, and scripts,
+        returning only the meaningful text.
+        """
+        soup = BeautifulSoup(html_source, 'html.parser')
 
-            headings = {
-                "h1": [h.get_text(strip=True) for h in soup.find_all("h1")],
-                "h2": [h.get_text(strip=True) for h in soup.find_all("h2")],
-                "h3": [h.get_text(strip=True) for h in soup.find_all("h3")]
-            }
+        # 1. Remove unwanted elements (Noise)
+        # We remove nav bars, headers, footers, scripts, styles, and cookie banners
+        for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'noscript', 'iframe']):
+            tag.decompose()
 
-            paragraphs = [p.get_text(strip=True) for p in soup.find_all("p")]
+        # 2. Extract text with spacing
+        # get_text(separator=' ') ensures words don't stick together
+        text = soup.get_text(separator='\n')
 
-            all_text = " ".join(paragraphs)
-
-            self.data.append({
-                "url": url,
-                "title": title,
-                "meta_description": meta_desc,
-                "headings": headings,
-                "paragraphs": paragraphs,
-                "full_text": all_text
-            })
-
-            for a_tag in soup.find_all('a', href=True):
-                full_url = urljoin(url, a_tag['href'])
-                if self.is_internal_link(full_url):
-                    if full_url not in self.visited and len(self.visited) < self.max_pages:
-                        self.visited.add(full_url)
-                        self.scrape_page(full_url)
-
-        except Exception as e:
-            print(f"Error scraping {url}: {e}")
-
-    def is_internal_link(self, url):
-        return urlparse(url).netloc == urlparse(self.base_url).netloc
+        # 3. Clean up whitespace
+        # Collapses multiple newlines into two (paragraph breaks)
+        # and multiple spaces into one.
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        clean_text = '\n'.join(chunk for chunk in chunks if chunk)
+        
+        return clean_text
 
     def scrape(self):
-        print(f"Starting crawl from {self.base_url} ...")
-        self.visited.add(self.base_url)
-        self.scrape_page(self.base_url)
+        print(f"🚀 Starting General Website Scraper (Selenium + Soup)...")
+        driver = self.setup_driver()
+        all_data = []
 
-        output = {
-            'timestamp': datetime.now().isoformat(),
-            'pages_scraped': len(self.data),
-            'data': self.data
-        }
+        try:
+            for url in self.urls:
+                if not url: continue
+                
+                print(f"🌐 Visiting: {url}...")
+                try:
+                    driver.get(url)
+                    time.sleep(3) # Wait for JS to load
+                    
+                    # Get the Title
+                    title = driver.title
+                    
+                    # Pass the raw HTML to our cleaner function
+                    clean_text = self.extract_clean_content(driver.page_source)
+                    
+                    if len(clean_text) > 100:
+                        print(f"   ✅ Scraped {len(clean_text)} chars (Cleaned)")
+                        all_data.append({
+                            "source": "website",
+                            "url": url,
+                            "title": title,
+                            "content": clean_text,
+                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                        })
+                    else:
+                        print(f"   ⚠️ Content too short or empty.")
+                        
+                except Exception as e:
+                    print(f"   ❌ Error scraping {url}: {e}")
 
-        with open('data/website_data.json', 'w', encoding='utf-8') as f:
-            json.dump(output, f, ensure_ascii=False, indent=2)
-        
-        print(f"Completed. Scraped {len(self.data)} pages.")
-        return self.data
+            with open(self.output_file, 'w', encoding='utf-8') as f:
+                json.dump(all_data, f, indent=2, ensure_ascii=False)
+            
+            print(f"\n✅ Website scraping complete. Saved to {self.output_file}")
+            return all_data
+
+        finally:
+            driver.quit()
