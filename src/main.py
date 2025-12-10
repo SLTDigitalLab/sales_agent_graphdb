@@ -7,7 +7,7 @@ import os
 from .api.services.chat_service import chat_histories 
 
 # Importing Routers
-from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin
+from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin, email
 
 print("FastAPI application initialized and routers included.")
 
@@ -43,5 +43,6 @@ api.include_router(v1_chat.router)
 api.include_router(db_utils.router)  
 api.include_router(neo4j_utils.router) 
 api.include_router(admin.router) 
+api.include_router(email.router)
 
 print("FastAPI application initialized and routers included.")
