@@ -1,4 +1,3 @@
-// frontend/src/app.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Trash2, Bot, User, Loader2, AlertCircle, Plus, Minus, X } from 'lucide-react';
 
@@ -109,15 +108,6 @@ function App() {
     }
   };
 
-
-  // Handlers for managing inline form state per message
-  const updateInlineFormState = (requestId, newState) => {
-    setInlineFormStates(prev => ({
-      ...prev,
-      [requestId]: { ...prev[requestId], ...newState }
-    }));
-  };
-
   const initializeInlineFormState = (requestId) => {
     if (!inlineFormStates[requestId]) {
       setInlineFormStates(prev => ({
@@ -133,123 +123,6 @@ function App() {
     }
   };
 
-  const handleInlineItemChange = (requestId, itemIndex, field, value) => {
-    updateInlineFormState(requestId, {
-      items: inlineFormStates[requestId]?.items.map((item, idx) =>
-        idx === itemIndex ? { ...item, [field]: value } : item
-      )
-    });
-  };
-
-  const handleInlineCustomerDetailChange = (requestId, field, value) => {
-    updateInlineFormState(requestId, {
-      customerDetails: { ...inlineFormStates[requestId]?.customerDetails, [field]: value }
-    });
-  };
-
-  const handleInlineAddItem = (requestId) => {
-    updateInlineFormState(requestId, {
-      items: [...inlineFormStates[requestId]?.items, { productId: '', quantity: 1 }]
-    });
-  };
-
-  const handleInlineRemoveItem = (requestId, itemIndex) => {
-    setInlineFormStates(prevStates => {
-      const currentState = prevStates[requestId];
-      if (!currentState || currentState.items.length <= 1) {
-        return prevStates;
-      }
-      const newItems = currentState.items.filter((_, idx) => idx !== itemIndex);
-      return {
-        ...prevStates,
-        [requestId]: {
-          ...currentState,
-          items: newItems
-        }
-      };
-    });
-  };
-
-  // Handle inline form submission
-  const handleInlineFormSubmit = async (requestId) => {
-    const currentState = inlineFormStates[requestId];
-    if (!currentState) return;
-
-    const { items, customerDetails } = currentState;
-    let newFormError = '';
-
-    // Validation
-    if (items.some(item => !item.productId.trim())) {
-      newFormError = 'Please select a product for all lines.';
-    } else if (!customerDetails.name.trim()) {
-      newFormError = 'Please fill in your name.';
-    } else {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!customerDetails.email.trim() || !emailRegex.test(customerDetails.email.trim())) {
-        newFormError = 'Please enter a valid email address.';
-      } else {
-        const phoneNumber = customerDetails.phone.trim();
-        if (!phoneNumber) {
-          newFormError = 'Please enter your phone number.';
-        } else {
-          const cleanedNumber = phoneNumber.replace(/\D/g, '');
-          if (cleanedNumber.length !== 10) {
-            newFormError = 'Phone number must be 10 digits.';
-          }
-        }
-      }
-    }
-
-    if (newFormError) {
-      updateInlineFormState(requestId, { formError: newFormError, isSubmitting: false });
-      return;
-    }
-
-    updateInlineFormState(requestId, { formError: '', isSubmitting: true, submissionStatus: '' });
-
-    const payload = {
-      items: items.map(item => ({
-        product_name: item.productId,
-        quantity: item.quantity
-      })),
-      customer_name: customerDetails.name.trim(),
-      customer_email: customerDetails.email.trim(),
-      customer_phone: customerDetails.phone.trim(),
-      customer_address: customerDetails.address.trim(),
-      notes: customerDetails.notes.trim()
-    };
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/email/order-request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `Server Error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Inline order submitted successfully:', data);
-      // Update state to show success message within the message bubble
-      updateInlineFormState(requestId, { submissionStatus: 'success', isSubmitting: false });
-
-      // Optionally, add a success message to the main chat history as well
-      // setMessages(prev => [...prev, {
-      //   id: Date.now(),
-      //   type: 'assistant', // Or 'system'?
-      //   content: 'Your order request has been submitted successfully!',
-      //   timestamp: new Date().toISOString()
-      // }]);
-
-    } catch (err) {
-      console.error('Error submitting inline order:', err);
-      updateInlineFormState(requestId, { formError: err.message || 'An error occurred.', submissionStatus: 'error', isSubmitting: false });
-    }
-  };
-
 
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
@@ -259,29 +132,39 @@ function App() {
   };
 
   // Inline Order Form Component
-  const InlineOrderForm = ({ requestId, initialMessage, onSubmit, initialFormState = {} }) => {
-    const [items, setItems] = useState(initialFormState.items || [{ productId: '', quantity: 1 }]);
-    const [customerDetails, setCustomerDetails] = useState(initialFormState.customerDetails || { name: '', email: '', phone: '', address: '', notes: '' });
+  const InlineOrderForm = ({ requestId, initialMessage, onSubmitSuccess, onSubmitError }) => {
+    const [items, setItems] = useState([{ productId: '', quantity: 1 }]); // productId will hold the product name/SKU
+    const [customerDetails, setCustomerDetails] = useState({ name: '', email: '', phone: '', address: '', notes: '' });
     const [formError, setFormError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [submissionStatus, setSubmissionStatus] = useState(initialFormState.submissionStatus || '');
+    const [submissionStatus, setSubmissionStatus] = useState(''); // '', 'success', 'error'
+    const [products, setProducts] = useState([]); // State to hold fetched products
+    const [loadingProducts, setLoadingProducts] = useState(true); // State to show loading indicator for products
 
-    // If already submitted successfully, just show the success message
-    if (submissionStatus === 'success') {
-      return (
-        <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl">
-          <div className="flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-            </svg>
-            <span className="text-green-800 font-medium">Order Request Sent!</span>
-          </div>
-          <p className="text-green-600 text-sm mt-1">Thank you for your request.</p>
-        </div>
-      );
-    }
+    // Fetch products when the component mounts
+    useEffect(() => {
+      const fetchProductsForForm = async () => {
+        try {
+          console.log("InlineOrderForm: Fetching products from Neo4j...");
+          const response = await fetch(`${API_BASE_URL}/db/graph/products-for-order-form`);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch products: ${response.status}`);
+          }
+          const data = await response.json();
+          setProducts(data.products);
+          setLoadingProducts(false);
+          console.log(`InlineOrderForm: Fetched ${data.products.length} products from Neo4j.`);
+        } catch (err) {
+          console.error("Error fetching products for order form:", err);
+          setProducts([]); // Set to empty array on error
+          setLoadingProducts(false);
+          setFormError(`Failed to load products: ${err.message}. Please try again later.`);
+        }
+      };
 
-    // Handler functions using local state
+      fetchProductsForForm();
+    }, []); // Empty dependency array means this runs once on mount
+
     const handleItemChange = (index, field, value) => {
       setItems(prevItems => {
         const newItems = [...prevItems];
@@ -295,45 +178,48 @@ function App() {
     };
 
     const addProductLine = () => {
-      setItems(prev => [...prev, { productId: '', quantity: 1 }]);
+      setItems(prevItems => [...prevItems, { productId: '', quantity: 1 }]);
     };
 
     const removeProductLine = (index) => {
-      if (items.length > 1) {
-        setItems(prev => prev.filter((_, i) => i !== index));
+      if (items.length > 1) { // Only allow removal if there's more than one item
+        setItems(prevItems => prevItems.filter((_, i) => i !== index));
       }
     };
 
     const handleSubmit = async () => {
-      // Validation logic
+      setFormError('');
+      setSubmissionStatus('');
+
+      // Basic validation
       if (items.some(item => !item.productId.trim())) {
         setFormError('Please select a product for all lines.');
         return;
       }
-      if (!customerDetails.name.trim()) {
-        setFormError('Please fill in your name.');
+      if (!customerDetails.name.trim() || !customerDetails.email.trim() || !customerDetails.phone.trim()) {
+        setFormError('Please fill in your name, email, and phone number.');
         return;
       }
+
+      // Email validation
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!customerDetails.email.trim() || !emailRegex.test(customerDetails.email.trim())) {
+      if (!emailRegex.test(customerDetails.email.trim())) {
         setFormError('Please enter a valid email address.');
         return;
       }
-      const phoneNumber = customerDetails.phone.trim();
-      if (!phoneNumber) {
-        setFormError('Please enter your phone number.');
-        return;
-      }
-      const cleanedPhoneNumber = phoneNumber.replace(/\D/g, '');
-      if (cleanedPhoneNumber.length !== 10) {
+
+      // Phone number validation (assuming 10 digits)
+      const phoneNumber = customerDetails.phone.trim().replace(/\D/g, '');
+      if (phoneNumber.length !== 10) {
         setFormError('Phone number must be 10 digits long.');
         return;
       }
 
-      // Prepare payload
+      setIsSubmitting(true);
+
       const payload = {
         items: items.map(item => ({
-          product_name: item.productId,
+          product_name: item.productId, // Use the name/SKU from the selected option
           quantity: item.quantity
         })),
         customer_name: customerDetails.name.trim(),
@@ -342,9 +228,6 @@ function App() {
         customer_address: customerDetails.address.trim(),
         notes: customerDetails.notes.trim()
       };
-
-      setIsSubmitting(true);
-      setFormError('');
 
       try {
         const response = await fetch(`${API_BASE_URL}/email/order-request`, {
@@ -361,14 +244,30 @@ function App() {
         const data = await response.json();
         console.log('Order submitted successfully:', data);
         setSubmissionStatus('success');
-        onSubmitSuccess && onSubmitSuccess(requestId, data);
+        if (onSubmitSuccess) onSubmitSuccess(requestId, data); // Notify parent component of success
       } catch (err) {
         console.error('Error submitting order:', err);
         setFormError(err.message || 'An error occurred while submitting your order.');
+        setSubmissionStatus('error');
+        if (onSubmitError) onSubmitError(requestId, err.message); // Notify parent component of error
       } finally {
         setIsSubmitting(false);
       }
     };
+
+    if (submissionStatus === 'success') {
+      return (
+        <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+          <div className="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            <span className="text-green-800 font-medium">Order Request Sent!</span>
+          </div>
+          <p className="text-green-600 text-sm mt-1">Thank you for your request. We will contact you soon.</p>
+        </div>
+      );
+    }
 
     return (
       <div className="mt-3 space-y-4">
@@ -384,47 +283,68 @@ function App() {
 
         <div>
           <h4 className="text-xs font-semibold text-slate-600 mb-1">Items</h4>
-          {items.map((item, index) => (
-            <div key={index} className="flex gap-1 mb-2"> {/* Key on the item container */}
-              <select
-                value={item.productId}
-                onChange={(e) => handleItemChange(index, 'productId', e.target.value)}
-                className="flex-1 px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500"
-                disabled={isSubmitting}
-              >
-                <option value="">Select a product...</option>
-                {/* Render options from products if available */}
-                <option value="Product A">Product A</option>
-                <option value="Product B">Product B</option>
-              </select>
-              <input
-                type="number"
-                min="1"
-                value={item.quantity}
-                onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
-                className="w-16 px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500"
-                disabled={isSubmitting}
-              />
-              {items.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeProductLine(index)}
-                  className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          {loadingProducts ? (
+            <div className="text-xs text-slate-500 italic">Loading products...</div>
+          ) : (
+            items.map((item, index) => (
+              <div key={index} className="flex gap-1 mb-2">
+                <select
+                  value={item.productId}
+                  onChange={(e) => handleItemChange(index, 'productId', e.target.value)}
+                  className="flex-1 px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500"
                   disabled={isSubmitting}
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={addProductLine}
-            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isSubmitting}
-          >
-            <Plus className="w-3 h-3" /> Add Item
-          </button>
+                  <option value="">Select a product...</option>
+                  {/* Group products by category */}
+                  {(() => {
+                    const categories = {};
+                    products.forEach(p => {
+                      if (!categories[p.category_name]) categories[p.category_name] = [];
+                      categories[p.category_name].push(p);
+                    });
+
+                    return Object.entries(categories).map(([category, prods]) => (
+                      <optgroup key={category} label={category}>
+                        {prods.map(p => (
+                          <option key={`${p.sku}-${p.name}`} value={p.name}> {/* Use name or SKU as value */}
+                            {p.name} (Rs. {p.price.toFixed(2)})
+                          </option>
+                        ))}
+                      </optgroup>
+                    ));
+                  })()}
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  value={item.quantity}
+                  onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
+                  className="w-16 px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500"
+                  disabled={isSubmitting}
+                />
+                {items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeProductLine(index)}
+                    className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isSubmitting}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+          {!loadingProducts && (
+            <button
+              type="button"
+              onClick={addProductLine}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isSubmitting}
+            >
+              <Plus className="w-3 h-3" /> Add Item
+            </button>
+          )}
         </div>
 
         <div>
@@ -455,7 +375,7 @@ function App() {
                 type="tel"
                 placeholder="Phone * (10 digits)"
                 value={customerDetails.phone}
-                onChange={(e) => handleCustomerDetailChange('phone', e.target.value.replace(/\D/g, ''))} // Allow only numbers
+                onChange={(e) => handleCustomerDetailChange('phone', e.target.value.replace(/\D/g, ''))}
                 maxLength="10"
                 className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500"
                 disabled={isSubmitting}
@@ -695,9 +615,9 @@ function App() {
                           {requestId && (
                             <InlineOrderForm
                               requestId={requestId}
-                              initialMessage={orderFormSignal.message} // Pass the message part (without marker)
-                              initialFormState={inlineFormStates[requestId] || { items: [], customerDetails: {}, formError: '', submissionStatus: '', isSubmitting: false }} // Pass initial state
-                            // onSubmit={handleInlineFormSubmit} // Pass the submit handler if needed for parent-side updates
+                              initialMessage={orderFormSignal.message}
+                              onSubmitSuccess={(reqId, data) => {/* Handle success, maybe update chat history */}}
+                              onSubmitError={(reqId, errorMsg) => {/* Handle error, maybe update UI */}}
                             />
                           )}
                         </>

@@ -49,7 +49,6 @@ def query_graph_db(state: AgentState) -> AgentState:
         result_text = result.get('result', "Error: No result found.")
         
         # Check if the result contains no relevant information
-        # Common indicators of empty/no results from Neo4j
         no_results_indicators = [
             "No result found", 
             "Error", 
@@ -120,18 +119,15 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
     print("---NODE: prepare_order_form_response---")
     question = state["question"]
 
-    # Craft the initial message to the user
     initial_message = "It sounds like you'd like to place an order. I can help you with that. Please fill out the form below with the product details and your contact information."
 
     # Create the special response structure
-    # This structure tells the frontend to show the order form
     form_signal = {
-        "type": "order_form", # Signal type
-        "message": initial_message, # Initial message to show
+        "type": "order_form", 
+        "message": initial_message, 
         "request_id": f"req_{hash(question)}"
     }
 
-    # Add this special structure to intermediate_steps
     intermediate_steps = state.get("intermediate_steps", [])
     intermediate_steps.append(form_signal)
 
