@@ -112,6 +112,32 @@ def query_vector_db(state: AgentState) -> AgentState:
 
 print("Node 'query_vector_db' defined (API call version).")
 
+# Order form node
+def prepare_order_form_response(state: AgentState) -> AgentState:
+    """
+    Prepares a special response that signals the frontend to display the order form.
+    """
+    print("---NODE: prepare_order_form_response---")
+    question = state["question"]
+
+    # Craft the initial message to the user
+    initial_message = "It sounds like you'd like to place an order. I can help you with that. Please fill out the form below with the product details and your contact information."
+
+    # Create the special response structure
+    # This structure tells the frontend to show the order form
+    form_signal = {
+        "type": "order_form", # Signal type
+        "message": initial_message, # Initial message to show
+        "request_id": f"req_{hash(question)}"
+    }
+
+    # Add this special structure to intermediate_steps
+    intermediate_steps = state.get("intermediate_steps", [])
+    intermediate_steps.append(form_signal)
+
+    # The final state update
+    return {"intermediate_steps": intermediate_steps}
+
 # Define Router Logic
 ROUTER_PROMPT_TEMPLATE = """
 You are an expert router agent. Your task is to analyze the user's question and choose the correct tool to answer it.
@@ -142,7 +168,19 @@ The "route" key must be one of three values:
    - "How to apply for services?"
    - "What are your business solutions?"
 
-3. 'general': Use this for conversational questions, greetings, small talk, or questions that don't require database lookups.
+3. 'order_form': Use this for questions expressing a clear intent to purchase a product, place an order, or buy something specific from the company's product catalog.
+   This includes ANY question indicating the user wants to initiate a purchase process, asks about buying products in the graph_db , or specifically names a product they wish to purchase.
+   Examples:
+   - "I want to buy a router."
+   - "Place an order for the Tenda MX3."
+   - "I'd like to purchase the Prolink HCD130C CLI Telephone."
+   - "How can I buy the security camera?"
+   - "Can you help me order?"
+   - "I need to place an order."
+   - "Buy Tenda Mx3 2 Pack Mesh Wi-Fi 6 System"
+   - "Order ProLink DS-3103"
+
+4. 'general': Use this for conversational questions, greetings, small talk, or questions that don't require database lookups.
    Examples:
    - "Hello"
    - "Hi"
@@ -160,7 +198,7 @@ print("Router chain created (JSON Output).")
 
 def route_query(state: AgentState) -> AgentState:
     """
-    Determines whether to query the graph database, vector database, or handle as general question.
+    Determines whether to query the graph database, vector database, order form or handle as general question.
     """
     print("---NODE: route_query---")
     question = state["question"]
@@ -174,12 +212,14 @@ def route_query(state: AgentState) -> AgentState:
         return {"route": "neo4j"}
     elif route_decision == "vector_db":
         return {"route": "vector"}
+    elif route_decision == "order_form": 
+        return {"route": "order_form"} 
     else:
         return {"route": "general"}
         
 print("Node 'route_query' defined.")
 
-# Define Synthesis Node
+
 SYNTHESIS_PROMPT_TEMPLATE = """
 You are a helpful AI assistant for SLT-MOBITEL. Your job is to answer the user's question based ONLY on the context provided in "Intermediate Steps Context" and the "Chat History".
 
@@ -190,7 +230,10 @@ IMPORTANT RULES:
 4. If Neo4j has no product results but ChromaDB has company/service information, use the ChromaDB information.
 5. If the "Intermediate Steps Context" contains multiple entries with identical or very similar content (e.g., the same social media post repeated), consolidate them into a single entry in the final response. Do not list the same post multiple times with different numbers.
 
-For handling multiple data sources in context:
+For handling specific data source signals in context:
+- If you see an entry with "type": "order_form" in the "Intermediate Steps Context", this means the system is preparing to display an order form to the user. DO NOT generate text that contradicts this. Instead, respond with the "message" field from that entry AND append a special marker at the end of your response so the frontend knows to show the form. The marker should be: [SHOW_ORDER_FORM:request_id] where "request_id" is the request_id from the signal. For example, if the entry is {{"type": "order_form", "message": "It sounds like you'd like to place an order...", "request_id": "req_123"}}, your response should be: "It sounds like you'd like to place an order... [SHOW_ORDER_FORM:req_123]". Do not add any other information besides the message and the marker.
+
+For handling multiple data sources in context (when NOT an order_form signal):
 - If you see "vector_db_general" tool results, these contain company/service information from website/social media
 - If you see "vector_db_fallback" tool results, these contain additional company information when Neo4j was empty
 - If you see "neo4j_qa" results, these contain specific product information
@@ -210,6 +253,7 @@ For questions about engagement metrics (comments, reactions, shares, likes):
 - Look for documents with metadata containing: likes_count, shares_count, comments_count, reactions_count
 - Extract metrics from the metadata, not the content
 - Format as: "Post: [post summary] - Likes: [count], Shares: [count], Comments: [count], Reactions: [count]"
+- If specific counts are not available, say so explicitly
 
 When showing social media content:
 - For posts: "[post content] - from [source]"
@@ -333,6 +377,7 @@ workflow = StateGraph(AgentState)
 workflow.add_node("router", route_query)
 workflow.add_node("query_neo4j", query_graph_db)
 workflow.add_node("query_vector", query_vector_db)
+workflow.add_node("prepare_order", prepare_order_form_response)
 workflow.add_node("generate", generate_response)
 workflow.set_entry_point("router")
 
@@ -342,6 +387,8 @@ def decide_next_node(state: AgentState):
         return "query_neo4j"
     elif state['route'] == "vector":
         return "query_vector"
+    elif state['route'] == "order_form": 
+        return "prepare_order" 
     elif state['route'] == "general":
         return "generate"  
     else:
@@ -354,12 +401,14 @@ workflow.add_conditional_edges(
     {
         "query_neo4j": "query_neo4j", 
         "query_vector": "query_vector",
+        "prepare_order": "prepare_order",
         "generate": "generate",
         END: END                    
     }
 )
 workflow.add_edge("query_neo4j", "generate")
 workflow.add_edge("query_vector", "generate")
+workflow.add_edge("prepare_order", "generate")
 workflow.add_edge("generate", END)
 
 app = workflow.compile()
