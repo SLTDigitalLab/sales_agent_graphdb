@@ -13,16 +13,12 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# Navigate from src/api/services/ -> root
 PROJECT_ROOT = os.path.join(script_dir, '..', '..', '..') 
-
-# Point specifically to the root folder
 CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
 # Initialize Neo4j connections
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-# Initialize Neo4j graph connection with error handling
 try:
     graph = Neo4jGraph(
         url=NEO4J_URI,
@@ -32,17 +28,18 @@ try:
     graph.refresh_schema()
     print("Neo4j schema refreshed for service.")
     
-    # --- UPDATED PROMPT HERE ---
+    # --- 1. UPDATED QA PROMPT (Strict Rules against Fake Links) ---
     QA_TEMPLATE_TEXT = """
     You are a helpful AI sales assistant for SLT Lifestore.
-    
-    **IMPORTANT GUIDELINES:**
-    1. All prices are in Sri Lankan Rupees (Rs.).
-    2. When listing products, ALWAYS format them as a Markdown link followed by the price.
-       Format: [Product Name](Product URL) - Rs. Price
-       Example: [Alcatel T28](https://example.com/t28) - Rs. 5,500.00
-    3. Do not show the raw URL separately.
-    
+    Use the provided context to answer the user's question.
+
+    **CRITICAL RULES FOR LINKS:**
+    1. **NEVER invent a URL.** Only use URLs provided in the context.
+    2. If a product in the context has a 'url' property, you MUST format it as: 
+       [Product Name](Actual URL) - Rs. Price
+    3. If the context does NOT have a URL for a product, just list the name and price. Do NOT add a link.
+    4. Do NOT use 'example.com' or 'lifestore.lk/product/...' unless it explicitly appears in the context.
+
     Information:
     {context}
     
@@ -51,14 +48,15 @@ try:
     """
     QA_PROMPT = PromptTemplate(input_variables=["context", "question"], template=QA_TEMPLATE_TEXT)
 
-    # Custom Cypher Generation Prompt 
+    # --- 2. UPDATED CYPHER PROMPT (Force fetching p.url) ---
     CYPHER_GENERATION_TEMPLATE = """
-    You are an expert Cypher query generator. Your goal is to create flexible, case-insensitive queries.
+    You are an expert Cypher query generator. 
     Given a graph schema and a user question, create a Cypher query to retrieve the information.
 
     **Querying Rules:**
     1.  **Always use `CONTAINS` for string matching.**
     2.  **Always be case-insensitive.** Use `toLower()` on both property and search term.
+    3.  **ALWAYS RETURN THE URL.** When querying for products, you MUST return `p.name`, `p.price`, and `p.url`.
     
     **Example for a CATEGORY:**
     Question: "what are my options for security cameras?"
@@ -66,7 +64,7 @@ try:
 
     **Example for a PRODUCT:**
     Question: "how much is the prolink ds-3103"
-    Cypher: `MATCH (p:Product) WHERE toLower(p.name) CONTAINS toLower('prolink ds-3103') RETURN p.price`
+    Cypher: `MATCH (p:Product) WHERE toLower(p.name) CONTAINS toLower('prolink ds-3103') RETURN p.name, p.price, p.url`
 
     Schema:
     {schema}
@@ -88,11 +86,9 @@ try:
     neo4j_available = True
 except Exception as e:
     print(f"Error initializing Neo4j connection: {e}")
-    print("Neo4j service will be unavailable until connection is restored.")
     neo4j_available = False
     neo4j_qa_chain = None
 
-# Define ingestion logic
 class Neo4jIngestor:
     def __init__(self, uri, user, password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -126,7 +122,6 @@ class Neo4jIngestor:
                     count += 1
         return count
 
-# Define service functions
 def run_graph_query(question: str) -> str:
     """Runs the QA chain for a given question."""
     print(f"Neo4j Service: Received query: {question}")
@@ -159,6 +154,11 @@ def run_neo4j_ingestion() -> int:
 
         processed_count = ingestor.ingest_data(CSV_FILE)
         print(f"Neo4j ingestion complete. Processed {processed_count} rows.")
+        
+        print("🔄 Refreshing Graph Schema for LLM...")
+        graph.refresh_schema()
+        print("✅ Schema Refreshed!")
+
         return processed_count
     finally:
         if ingestor:
