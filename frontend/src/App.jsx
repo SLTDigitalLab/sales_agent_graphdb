@@ -108,21 +108,6 @@ function App() {
     }
   };
 
-  const initializeInlineFormState = (requestId) => {
-    if (!inlineFormStates[requestId]) {
-      setInlineFormStates(prev => ({
-        ...prev,
-        [requestId]: {
-          items: [{ productId: '', quantity: 1 }],
-          customerDetails: { name: '', email: '', phone: '', address: '', notes: '' },
-          formError: '',
-          submissionStatus: '', // '', 'success', 'error'
-          isSubmitting: false
-        }
-      }));
-    }
-  };
-
 
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
@@ -131,15 +116,36 @@ function App() {
     });
   };
 
+
+  // Function to handle successful order submission
+  const handleOrderSuccess = (requestId) => {
+    setInlineFormStates(prev => ({
+      ...prev,
+      [requestId]: {
+        ...prev[requestId],
+        submissionStatus: 'success'
+      }
+    }));
+  };
+
+
   // Inline Order Form Component
-  const InlineOrderForm = ({ requestId, initialMessage, onSubmitSuccess, onSubmitError }) => {
-    const [items, setItems] = useState([{ productId: '', quantity: 1 }]); // productId will hold the product name/SKU
+  const InlineOrderForm = ({ requestId, initialMessage, savedState, onOrderSuccess, onSubmitError, prefillProduct }) => {
+    const [items, setItems] = useState([
+        { 
+          productId: savedState?.items?.[0]?.productId || prefillProduct || '', 
+          quantity: savedState?.items?.[0]?.quantity || 1 
+        }
+    ]);
     const [customerDetails, setCustomerDetails] = useState({ name: '', email: '', phone: '', address: '', notes: '' });
     const [formError, setFormError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [submissionStatus, setSubmissionStatus] = useState(''); // '', 'success', 'error'
-    const [products, setProducts] = useState([]); // State to hold fetched products
-    const [loadingProducts, setLoadingProducts] = useState(true); // State to show loading indicator for products
+
+    // Initialize status based on parent state
+    const [submissionStatus, setSubmissionStatus] = useState(savedState?.submissionStatus || '');
+
+    const [products, setProducts] = useState([]);
+    const [loadingProducts, setLoadingProducts] = useState(true);
 
     // Fetch products when the component mounts
     useEffect(() => {
@@ -219,7 +225,7 @@ function App() {
 
       const payload = {
         items: items.map(item => ({
-          product_name: item.productId, // Use the name/SKU from the selected option
+          product_name: item.productId,
           quantity: item.quantity
         })),
         customer_name: customerDetails.name.trim(),
@@ -244,21 +250,23 @@ function App() {
         const data = await response.json();
         console.log('Order submitted successfully:', data);
         setSubmissionStatus('success');
-        if (onSubmitSuccess) onSubmitSuccess(requestId, data); // Notify parent component of success
+        if (onOrderSuccess) onOrderSuccess(requestId);
+
       } catch (err) {
         console.error('Error submitting order:', err);
         setFormError(err.message || 'An error occurred while submitting your order.');
         setSubmissionStatus('error');
-        if (onSubmitError) onSubmitError(requestId, err.message); // Notify parent component of error
+        if (onSubmitError) onSubmitError(requestId, err.message);
       } finally {
         setIsSubmitting(false);
       }
     };
 
-    if (submissionStatus === 'success') {
+    if (submissionStatus === 'success' || savedState?.submissionStatus === 'success') {
       return (
         <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl">
           <div className="flex items-center gap-2">
+            {/* ... keep your success SVG and text ... */}
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
@@ -566,24 +574,20 @@ function App() {
           ) : (
             <div className="space-y-6">
               {messages.map((message) => {
-                // --- INLINE FORM LOGIC: Parse message content for the special marker ---
-                let contentToRender = message.content; // Start with the raw content
+                // --- INLINE FORM LOGIC
+                let contentToRender = message.content; 
                 let orderFormSignal = null;
                 let requestId = null;
+                let prefillProduct = '';
 
                 // Check if the message content contains the special order form marker
-                const orderFormMarkerMatch = message.content.match(/\[SHOW_ORDER_FORM:(req_[^\]]+)\]/);
+                const orderFormMarkerMatch = message.content.match(/\[SHOW_ORDER_FORM:([^|\]]+)(?:\|([^\]]+))?\]/);
                 if (orderFormMarkerMatch) {
-                  requestId = orderFormMarkerMatch[1]; // Extract the request_id
-                  // Remove the marker from the content to render
+                  requestId = orderFormMarkerMatch[1];
+                  prefillProduct = orderFormMarkerMatch[2] || '';
                   contentToRender = message.content.replace(orderFormMarkerMatch[0], '').trim();
                   // Set the signal flag
-                  orderFormSignal = { type: 'order_form', request_id: requestId, message: contentToRender };
-                }
-
-                // Initialize form state if this is the first time seeing this requestId (could be done once per message render)
-                if (requestId && !inlineFormStates[requestId]) {
-                  initializeInlineFormState(requestId); // Make sure this function exists in your main App component
+                  orderFormSignal = { type: 'order_form', request_id: requestId, message: contentToRender, prefill_product: prefillProduct };
                 }
 
                 return (
@@ -614,10 +618,11 @@ function App() {
                           {/* Conditionally render the inline form if the signal is present */}
                           {requestId && (
                             <InlineOrderForm
-                              requestId={requestId}
-                              initialMessage={orderFormSignal.message}
-                              onSubmitSuccess={(reqId, data) => {/* Handle success, maybe update chat history */}}
-                              onSubmitError={(reqId, errorMsg) => {/* Handle error, maybe update UI */}}
+                              requestId={requestId}  
+                              prefillProduct={orderFormSignal.prefill_product}                   
+                              savedState={inlineFormStates[requestId]}
+                              onOrderSuccess={handleOrderSuccess}
+                              onSubmitError={(reqId, errorMsg) => console.error(errorMsg)}
                             />
                           )}
                         </>

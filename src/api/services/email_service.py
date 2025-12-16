@@ -5,7 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 from typing import Dict, Any
 
-load_dotenv() # Load environment variables
+load_dotenv() 
 
 # Retrieve email settings from environment variables
 SMTP_SERVER = os.getenv("EMAIL_SMTP_SERVER")
@@ -16,10 +16,12 @@ TARGET_EMAIL = os.getenv("EMAIL_TARGET_ADDRESS")
 
 def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
     """
-    Sends an email containing the order request details, including multiple items.
+    Sends two emails:
+    1. A notification to the internal team (TARGET_EMAIL).
+    2. A confirmation receipt to the customer (customer_email).
 
     Args:
-        request_ A dictionary containing items (list of product/quantity), customer info, etc.
+        request_data: A dictionary containing items (list of product/quantity), customer info, etc.
 
     Returns:
         A dictionary indicating success or failure.
@@ -28,76 +30,88 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
         print("Email configuration is missing in environment variables.")
         return {"status": "error", "message": "Email configuration is missing."}
 
+    # Extract items and customer info once to use in both emails
+    items = request_data.get('items', [])
+    customer_name = request_data.get('customer_name', 'Valued Customer')
+    customer_email = request_data.get('customer_email')
+    customer_phone = request_data.get('customer_phone', 'N/A')
+    customer_address = request_data.get('customer_address', 'N/A')
+    notes = request_data.get('notes', 'N/A')
+
+    # Format the list of items for the email body
+    items_body = ""
+    for item in items:
+        items_body += f"  - {item.get('product_name', 'Unknown Product')} (Qty: {item.get('quantity', 1)})\n"
+
     try:
-        # Create the email message
-        msg = MIMEMultipart()
-        msg['From'] = SENDER_EMAIL
-        msg['To'] = TARGET_EMAIL
-        msg['Subject'] = f"New Multi-Product Order Request from AI Agent User: {request_data.get('customer_name', 'Unknown')}"
+        # Establish the connection ONCE for both emails
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls() 
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
 
-        # Extract items and customer info
-        items = request_data.get('items', [])
-        customer_name = request_data.get('customer_name', 'N/A')
-        customer_email = request_data.get('customer_email', 'N/A')
-        customer_phone = request_data.get('customer_phone', 'N/A')
-        customer_address = request_data.get('customer_address', 'N/A')
-        notes = request_data.get('notes', 'N/A')
+        # SEND INTERNAL NOTIFICATION EMAIL 
+        msg_internal = MIMEMultipart()
+        msg_internal['From'] = SENDER_EMAIL
+        msg_internal['To'] = TARGET_EMAIL
+        msg_internal['Subject'] = f"New Order Request: {customer_name}"
 
-        # Create the email body
-        # List the items first
-        items_body = "Items Requested:\n"
-        for item in items:
-            items_body += f"  - Product: {item.get('product_name', 'N/A')}, Quantity: {item.get('quantity', 'N/A')}\n"
+        internal_body = f"""
+        A new order request has been submitted via the AI Agent.
 
-        body = f"""
-        A new multi-product order request has been submitted via the AI Enterprise Agent.
-
+        Requested Items:
         {items_body}
 
         Customer Details:
-        - Customer Name: {customer_name}
-        - Customer Email: {customer_email}
-        - Customer Phone: {customer_phone}
-        - Customer Address: {customer_address}
-        - Additional Notes: {notes}
+        - Name: {customer_name}
+        - Email: {customer_email}
+        - Phone: {customer_phone}
+        - Address: {customer_address}
+        - Notes: {notes}
 
-        Please contact the customer using the provided details.
+        Please contact the customer to confirm this order.
         """
-        msg.attach(MIMEText(body, 'plain'))
+        msg_internal.attach(MIMEText(internal_body, 'plain'))
+        server.sendmail(SENDER_EMAIL, TARGET_EMAIL, msg_internal.as_string())
+        print(f"Internal order notification sent to {TARGET_EMAIL}")
 
-        # Connect to the server and send the email
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()  # Enable encryption
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        text = msg.as_string()
-        server.sendmail(SENDER_EMAIL, TARGET_EMAIL, text)
+        # SEND CUSTOMER CONFIRMATION EMAIL
+        # Only attempt if have a valid looking customer email
+        if customer_email and "@" in customer_email:
+            msg_customer = MIMEMultipart()
+            msg_customer['From'] = SENDER_EMAIL
+            msg_customer['To'] = customer_email
+            msg_customer['Subject'] = "Order Request Received - SLT-MOBITEL AI Assistant"
+
+            customer_body = f"""
+            Dear {customer_name},
+
+            Thank you for your interest in our products. 
+            
+            We have received your request for the following items:
+            {items_body}
+
+            Our sales team has been notified. They will review your request and contact you shortly at {customer_phone} to finalize the order.
+
+            Thank you,
+            The SLT-MOBITEL Team
+            """
+            msg_customer.attach(MIMEText(customer_body, 'plain'))
+            server.sendmail(SENDER_EMAIL, customer_email, msg_customer.as_string())
+            print(f"Customer confirmation sent to {customer_email}")
+        else:
+            print("Skipping customer email: Invalid or missing email address.")
+
+        # Close connection
         server.quit()
 
-        print(f"Multi-product order request email sent successfully to {TARGET_EMAIL}")
-        return {"status": "success", "message": "Multi-product order request sent successfully."}
+        return {"status": "success", "message": "Order request processed and emails sent."}
 
     except smtplib.SMTPAuthenticationError:
         print("SMTP Authentication Error: Check your email address and App Password.")
         return {"status": "error", "message": "Authentication failed. Check email settings."}
     except smtplib.SMTPRecipientsRefused:
-        print(f"Recipient address rejected: {TARGET_EMAIL}")
-        return {"status": "error", "message": f"Recipient address refused: {TARGET_EMAIL}"}
+        print(f"Recipient address rejected.")
+        return {"status": "error", "message": "Recipient address refused."}
     except Exception as e:
         print(f"Error sending email: {e}")
         return {"status": "error", "message": f"An error occurred: {str(e)}"}
-
-# Example usage (for testing purposes):
-# if __name__ == "__main__":
-#     sample_data = {
-#         "items": [ # Note the 'items' key containing a list
-#             {"product_name": "Tenda Mx3 2 Pack Mesh Wi-Fi 6 System", "quantity": 2},
-#             {"product_name": "Power Adaptor for Motorola Cordless Phone", "quantity": 1}
-#         ],
-#         "customer_name": "John Doe",
-#         "customer_email": "johndoe@example.com",
-#         "customer_phone": "+94123456789",
-#         "customer_address": "123 Main St, City, Country",
-#         "notes": "Please deliver ASAP."
-#     }
-#     result = send_order_request_email(sample_data)
-#     print(result)

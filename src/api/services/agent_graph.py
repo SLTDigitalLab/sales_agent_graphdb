@@ -111,27 +111,60 @@ def query_vector_db(state: AgentState) -> AgentState:
 
 print("Node 'query_vector_db' defined (API call version).")
 
-# Order form node
+# Extraction chain for the order node
+EXTRACTION_PROMPT = """
+You are an expert at understanding conversation context. 
+Based on the chat history, identify the specific product the user wants to buy.
+If the user says "I want to buy that" or similar, look at the previous assistant messages to find the product name.
+Return ONLY the product name. If no specific product is mentioned or clear from context, return "None".
+
+Chat History:
+{chat_history}
+
+User's input: {question}
+"""
+extraction_prompt = ChatPromptTemplate.from_template(EXTRACTION_PROMPT)
+extraction_chain = extraction_prompt | llm | StrOutputParser()
+
 def prepare_order_form_response(state: AgentState) -> AgentState:
     """
     Prepares a special response that signals the frontend to display the order form.
+    It now also attempts to extract the product name from context to pre-fill the form.
     """
     print("---NODE: prepare_order_form_response---")
     question = state["question"]
+    chat_history = state.get("chat_history", [])
 
-    initial_message = "It sounds like you'd like to place an order. I can help you with that. Please fill out the form below with the product details and your contact information."
+    # Attempt to extract the product name from context
+    product_context = "None"
+    try:
+        # Convert chat history to string for the extraction chain
+        history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history[-6:]]) # Look at last 6 messages
+        product_context = extraction_chain.invoke({"chat_history": history_str, "question": question}).strip()
+        
+        # Cleanup
+        product_context = product_context.replace('"', '').replace("'", "")
+        if "None" in product_context: 
+            product_context = ""
+        else:
+            print(f"Extracted product context: {product_context}")
+    except Exception as e:
+        print(f"Error extracting product context: {e}")
+        product_context = ""
 
-    # Create the special response structure
+    initial_message = "It sounds like you'd like to place an order. I can help you with that. Please fill out the form below."
+
+    # Create the special response structure WITH the product info
     form_signal = {
         "type": "order_form", 
         "message": initial_message, 
-        "request_id": f"req_{hash(question)}"
+        "request_id": f"req_{hash(question)}",
+        "prefill_product": product_context 
     }
 
     intermediate_steps = state.get("intermediate_steps", [])
     intermediate_steps.append(form_signal)
 
-    # The final state update
     return {"intermediate_steps": intermediate_steps}
 
 # Define Router Logic
@@ -227,7 +260,13 @@ IMPORTANT RULES:
 5. If the "Intermediate Steps Context" contains multiple entries with identical or very similar content (e.g., the same social media post repeated), consolidate them into a single entry in the final response. Do not list the same post multiple times with different numbers.
 
 For handling specific data source signals in context:
-- If you see an entry with "type": "order_form" in the "Intermediate Steps Context", this means the system is preparing to display an order form to the user. DO NOT generate text that contradicts this. Instead, respond with the "message" field from that entry AND append a special marker at the end of your response so the frontend knows to show the form. The marker should be: [SHOW_ORDER_FORM:request_id] where "request_id" is the request_id from the signal. For example, if the entry is {{"type": "order_form", "message": "It sounds like you'd like to place an order...", "request_id": "req_123"}}, your response should be: "It sounds like you'd like to place an order... [SHOW_ORDER_FORM:req_123]". Do not add any other information besides the message and the marker.
+- If you see an entry with "type": "order_form" in the "Intermediate Steps Context", this means the system is preparing to display an order form. 
+- Respond with the "message" field from that entry.
+- Append a special marker at the end.
+- The marker format is: [SHOW_ORDER_FORM:request_id|product_name]
+- If "prefill_product" is empty or missing, just use [SHOW_ORDER_FORM:request_id]
+- Example 1 (Product found): "It sounds like you want to order... [SHOW_ORDER_FORM:req_123|Prolink DL 7202]"
+- Example 2 (No product): "It sounds like you want to order... [SHOW_ORDER_FORM:req_123]"
 
 For handling multiple data sources in context (when NOT an order_form signal):
 - If you see "vector_db_general" tool results, these contain company/service information from website/social media
