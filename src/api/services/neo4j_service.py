@@ -28,17 +28,16 @@ try:
     graph.refresh_schema()
     print("Neo4j schema refreshed for service.")
     
-    # --- 1. UPDATED QA PROMPT (Strict Rules against Fake Links) ---
+    # --- 1. QA PROMPT (Formatting Rules) ---
     QA_TEMPLATE_TEXT = """
     You are a helpful AI sales assistant for SLT Lifestore.
     Use the provided context to answer the user's question.
 
     **CRITICAL RULES FOR LINKS:**
     1. **NEVER invent a URL.** Only use URLs provided in the context.
-    2. If a product in the context has a 'url' property, you MUST format it as: 
-       [Product Name](Actual URL) - Rs. Price
-    3. If the context does NOT have a URL for a product, just list the name and price. Do NOT add a link.
-    4. Do NOT use 'example.com' or 'lifestore.lk/product/...' unless it explicitly appears in the context.
+    2. If a product has a URL, format it as: [Product Name](Actual URL) - Rs. Price
+    3. If no URL exists, just list the name and price.
+    4. Do NOT use 'example.com'.
 
     Information:
     {context}
@@ -48,28 +47,45 @@ try:
     """
     QA_PROMPT = PromptTemplate(input_variables=["context", "question"], template=QA_TEMPLATE_TEXT)
 
-    # --- 2. UPDATED CYPHER PROMPT (Force fetching p.url) ---
+    # --- 2. UPDATED CYPHER PROMPT (Fuzzy Search Logic) ---
     CYPHER_GENERATION_TEMPLATE = """
-    You are an expert Cypher query generator. 
-    Given a graph schema and a user question, create a Cypher query to retrieve the information.
-
-    **Querying Rules:**
-    1.  **Always use `CONTAINS` for string matching.**
-    2.  **Always be case-insensitive.** Use `toLower()` on both property and search term.
-    3.  **ALWAYS RETURN THE URL.** When querying for products, you MUST return `p.name`, `p.price`, and `p.url`.
+    You are an expert Cypher query generator.
     
-    **Example for a CATEGORY:**
-    Question: "what are my options for security cameras?"
-    Cypher: `MATCH (p:Product)-[:IN_CATEGORY]->(c:Category) WHERE toLower(c.name) CONTAINS toLower('security camera') RETURN p.name, p.price, p.url`
+    **Schema:**
+    Node types: (:Product), (:Category)
+    Relationships: (:Product)-[:IN_CATEGORY]->(:Category)
+    Properties: Product(name, price, url, sku), Category(name)
+    
+    **Indexes Available:**
+    - Fulltext Index: 'product_name_index' on (:Product).name
 
-    **Example for a PRODUCT:**
-    Question: "how much is the prolink ds-3103"
-    Cypher: `MATCH (p:Product) WHERE toLower(p.name) CONTAINS toLower('prolink ds-3103') RETURN p.name, p.price, p.url`
+    **SEARCH RULES (CRITICAL):**
+    1. **Fuzzy Search:** When the user searches for a product name (e.g. "router", "wifi", "camera"), use the fulltext index with the `~` fuzzy operator.
+       Syntax: `CALL db.index.fulltext.queryNodes("product_name_index", "search_term~") YIELD node AS p`
+    2. **Case Insensitivity:** The fulltext index handles case automatically.
+    3. **Return Fields:** Always return `p.name`, `p.price`, and `p.url`.
+    4. **Synonyms:**
+       - "wifi" -> search for "wifi~ OR wi-fi~"
+       - "ups" -> search for "ups~ OR power backup~"
 
-    Schema:
-    {schema}
+    **Examples:**
 
-    Question: {question}
+    Question: "Do you have any routers?"
+    Cypher: 
+    CALL db.index.fulltext.queryNodes("product_name_index", "router~") YIELD node AS p 
+    RETURN p.name, p.price, p.url LIMIT 10
+
+    Question: "price of the alcatel phone"
+    Cypher: 
+    CALL db.index.fulltext.queryNodes("product_name_index", "alcatel~ AND phone~") YIELD node AS p 
+    RETURN p.name, p.price, p.url LIMIT 5
+
+    Question: "Show me wifi devices" (Handles hyphen variation)
+    Cypher: 
+    CALL db.index.fulltext.queryNodes("product_name_index", "wifi~ OR wi-fi~") YIELD node AS p 
+    RETURN p.name, p.price, p.url LIMIT 10
+
+    Question: "{question}"
     Cypher Query:
     """
     CYPHER_PROMPT = PromptTemplate(input_variables=["schema", "question"], template=CYPHER_GENERATION_TEMPLATE)
@@ -95,13 +111,23 @@ class Neo4jIngestor:
         self.driver.verify_connectivity()
     def close(self):
         self.driver.close()
+    
     def setup_constraints(self):
         with self.driver.session(database="neo4j") as session:
+            # 1. Unique Constraints
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Category) REQUIRE c.name IS UNIQUE")
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (p:Product) REQUIRE p.sku IS UNIQUE")
+            
+            # 2. FULLTEXT SEARCH INDEX (The key to fuzzy matching)
+            # This allows queries like "routter" to find "Router"
+            print("Creating Fulltext Search Index on Product Names...")
+            session.run("CREATE FULLTEXT INDEX product_name_index IF NOT EXISTS FOR (p:Product) ON EACH [p.name]")
+
     def clear_database(self):
         with self.driver.session(database="neo4j") as session:
             session.run("MATCH (n) DETACH DELETE n")
+            # Note: We do NOT drop the index here, so it persists
+            
     def ingest_data(self, csv_file_path):
         ingest_query = """
         MERGE (c:Category {name: $row.category_name})
@@ -124,16 +150,12 @@ class Neo4jIngestor:
 
 def run_graph_query(question: str) -> str:
     """Runs the QA chain for a given question."""
-    print(f"Neo4j Service: Received query: {question}")
-    
     if not neo4j_available or neo4j_qa_chain is None:
-        return "Error: Neo4j database is currently unavailable. Please try again later."
-    
+        return "Error: Neo4j database is currently unavailable."
     try:
         result = neo4j_qa_chain.invoke({"query": question})
         return result.get('result', "Error: No result found.")
     except Exception as e:
-        print(f"Error during Neo4j query: {e}")
         return f"Error: {str(e)}"
 
 def run_neo4j_ingestion() -> int:
@@ -144,10 +166,11 @@ def run_neo4j_ingestion() -> int:
         ingestor = Neo4jIngestor(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
         print("Clearing Neo4j database...")
         ingestor.clear_database()
-        print("Setting up constraints...")
-        ingestor.setup_constraints()
-        print(f"Ingesting data from {CSV_FILE}...")
         
+        print("Setting up constraints & indexes...")
+        ingestor.setup_constraints()
+        
+        print(f"Ingesting data from {CSV_FILE}...")
         if not os.path.exists(CSV_FILE):
              print(f"❌ Error: CSV file not found at {CSV_FILE}")
              return 0
