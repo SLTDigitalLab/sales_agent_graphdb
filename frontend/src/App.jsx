@@ -248,7 +248,7 @@ function App() {
         }
 
         const data = await response.json();
-        console.log('Order submitted successfully:', data);
+        console.log('Order submitted successfully: ', data);
         setSubmissionStatus('success');
         if (onOrderSuccess) onOrderSuccess(requestId);
 
@@ -272,7 +272,7 @@ function App() {
             </svg>
             <span className="text-green-800 font-medium">Order Request Sent!</span>
           </div>
-          <p className="text-green-600 text-sm mt-1">Thank you for your request. We will contact you soon.</p>
+          <p className="text-green-600 text-sm mt-1">Thank you for your request. You will receive a confirmation email shortly. We will contact you soon.</p>
         </div>
       );
     }
@@ -542,11 +542,11 @@ function App() {
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl w-full">
                 <button
-                  onClick={() => setInputValue("What is the price of the eMark GM4 Mini UPS?")}
+                  onClick={() => setInputValue("I want to order a product")}
                   className="p-4 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all text-left group"
                 >
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">Product Pricing</p>
-                  <p className="text-xs text-slate-500 mt-1">Ask about product prices</p>
+                  <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">Product Ordering</p>
+                  <p className="text-xs text-slate-500 mt-1">Order products from us</p>
                 </button>
                 <button
                   onClick={() => setInputValue("What are available product categories?")}
@@ -677,7 +677,7 @@ function App() {
       {/* Input Form */}
       <div className="border-t border-slate-200 bg-white">
         <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className="flex gap-3"> {/* Changed form to div to add button next to input */}
+          <form onSubmit={sendMessage} className="flex gap-3">
             <input
               ref={inputRef}
               type="text"
@@ -689,7 +689,6 @@ function App() {
             />
             <button
               type="submit"
-              onClick={sendMessage} // Changed to onClick to work with div
               disabled={!inputValue.trim() || isLoading}
               className="px-6 py-3.5 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 font-medium shadow-md shadow-blue-500/20"
             >
@@ -702,9 +701,9 @@ function App() {
                 </>
               )}
             </button>
-          </div>
+          </form>
           <p className="text-xs text-slate-400 mt-3 text-center font-medium">
-            Session ID: {sessionId} • Powered by LangGraph & Neo4j
+            Session ID: {sessionId} • AI Enterprise Agent
           </p>
         </div>
       </div>

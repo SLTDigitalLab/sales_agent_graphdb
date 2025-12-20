@@ -1,6 +1,7 @@
 import smtplib
 import os
 from email.mime.text import MIMEText
+import textwrap
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 from typing import Dict, Any
@@ -38,10 +39,9 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
     customer_address = request_data.get('customer_address', 'N/A')
     notes = request_data.get('notes', 'N/A')
 
-    # Format the list of items for the email body
     items_body = ""
     for item in items:
-        items_body += f"  - {item.get('product_name', 'Unknown Product')} (Qty: {item.get('quantity', 1)})\n"
+        items_body += f"- {item.get('product_name', 'Unknown Product')} (Quantity: {item.get('quantity', 1)})\n"
 
     try:
         # Establish the connection ONCE for both emails
@@ -49,13 +49,14 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
         server.starttls() 
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
 
-        # SEND INTERNAL NOTIFICATION EMAIL 
+        # SEND NOTIFICATION EMAIL TO SALES TEAM 
         msg_internal = MIMEMultipart()
         msg_internal['From'] = SENDER_EMAIL
         msg_internal['To'] = TARGET_EMAIL
         msg_internal['Subject'] = f"New Order Request: {customer_name}"
 
-        internal_body = f"""
+        # Order notification email body
+        internal_body = textwrap.dedent(f"""
         A new order request has been submitted via the AI Agent.
 
         Requested Items:
@@ -69,20 +70,21 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
         - Notes: {notes}
 
         Please contact the customer to confirm this order.
-        """
+        """)
+        
         msg_internal.attach(MIMEText(internal_body, 'plain'))
         server.sendmail(SENDER_EMAIL, TARGET_EMAIL, msg_internal.as_string())
         print(f"Internal order notification sent to {TARGET_EMAIL}")
 
-        # SEND CUSTOMER CONFIRMATION EMAIL
-        # Only attempt if have a valid looking customer email
+        # SEND CUSTOMER CONFIRMATION EMAIL 
         if customer_email and "@" in customer_email:
             msg_customer = MIMEMultipart()
             msg_customer['From'] = SENDER_EMAIL
             msg_customer['To'] = customer_email
             msg_customer['Subject'] = "Order Request Received - SLT-MOBITEL AI Assistant"
 
-            customer_body = f"""
+            # Customer email body
+            customer_body = textwrap.dedent(f"""
             Dear {customer_name},
 
             Thank you for your interest in our products. 
@@ -90,11 +92,11 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
             We have received your request for the following items:
             {items_body}
 
-            Our sales team has been notified. They will review your request and contact you shortly at {customer_phone} to finalize the order.
+            Our sales team has been notified. They will review your request and contact you at {customer_phone} to finalize the order.
 
-            Thank you,
-            The SLT-MOBITEL Team
-            """
+            Thank you.
+            """)
+            
             msg_customer.attach(MIMEText(customer_body, 'plain'))
             server.sendmail(SENDER_EMAIL, customer_email, msg_customer.as_string())
             print(f"Customer confirmation sent to {customer_email}")
