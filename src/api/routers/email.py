@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, List 
 from ..services.email_service import send_order_request_email
@@ -21,17 +21,15 @@ class OrderRequest(BaseModel):
     notes: Optional[str] = None
 
 @router.post("/order-request")
-async def submit_order_request(request: OrderRequest):
+async def submit_order_request(request: OrderRequest, background_tasks: BackgroundTasks):
     """
-    Receives order request data (including multiple items) from the frontend and sends an email.
+    Receives order request data (including multiple items) from the frontend and sends an email in the background to prevent blocking
     """
-    print(f"Received order request: {request.dict()}")
-    result = send_order_request_email(request.dict())
+    
+    print(f"Received order request for: {request.customer_name}")
 
-    if result["status"] == "success":
-        return {"message": result["message"]}
-    else:
-        # Return a 500 error if sending the email failed
-        raise HTTPException(status_code=500, detail=result["message"])
+    background_tasks.add_task(send_order_request_email, request.dict())
+
+    return {"message": "Order request received. Processing emails in background."}
 
 print("Email router loaded.")

@@ -33,7 +33,7 @@ def query_graph_db(state: AgentState) -> AgentState:
     """
     Queries the Neo4j SERVICE API based on the question.
     """
-    print("---NODE: query_graph_db (calling API)---")
+    print("---NODE: query_graph_db (calling API)---", flush=True)
     question = state["question"]
     intermediate_steps = state.get("intermediate_steps", []) 
 
@@ -82,7 +82,7 @@ def query_vector_db(state: AgentState) -> AgentState:
     """
     Queries the vector database (Chroma DB) SERVICE API.
     """
-    print("---NODE: query_vector_db (calling API)---")
+    print("---NODE: query_vector_db (calling API)---", flush=True)
     question = state["question"]
     intermediate_steps = state.get("intermediate_steps", [])
 
@@ -131,7 +131,7 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
     Prepares a special response that signals the frontend to display the order form.
     It now also attempts to extract the product name from context to pre-fill the form.
     """
-    print("---NODE: prepare_order_form_response---")
+    print("---NODE: prepare_order_form_response---", flush=True)
     question = state["question"]
     chat_history = state.get("chat_history", [])
 
@@ -227,24 +227,26 @@ print("Router chain created (JSON Output).")
 
 def route_query(state: AgentState) -> AgentState:
     """
-    Determines whether to query the graph database, vector database, order form or handle as general question.
+    Determines whether to query the graph database, vector database, order form or handle as general question AND clears old intermediate steps from previous turns.
     """
-    print("---NODE: route_query---")
+    print("---NODE: route_query---", flush=True)
     question = state["question"]
+
+    state["intermediate_steps"] = []
 
     response_json = router_chain.invoke({"question": question})
     route_decision = response_json.get("route", "vector_db")
     
-    print(f"Routing decision: {route_decision} (Reason: {response_json.get('reasoning', 'N/A')})")
+    print(f"Routing decision: {route_decision}, (Reason: {response_json.get('reasoning', 'N/A')})")
 
     if route_decision == "graph_db":
-        return {"route": "neo4j"}
+        return {"route": "neo4j", "intermediate_steps": []}
     elif route_decision == "vector_db":
-        return {"route": "vector"}
+        return {"route": "vector", "intermediate_steps": []}
     elif route_decision == "order_form": 
-        return {"route": "order_form"} 
+        return {"route": "order_form", "intermediate_steps": []} 
     else:
-        return {"route": "general"}
+        return {"route": "general", "intermediate_steps": []}
         
 print("Node 'route_query' defined.")
 
@@ -314,7 +316,7 @@ def generate_response(state: AgentState) -> AgentState:
     For greetings, responds directly. For other general questions, queries ChromaDB first. 
     If Neo4j returns no results, queries ChromaDB as fallback.
     """
-    print("---NODE: generate_response---")
+    print("---NODE: generate_response---", flush=True)
     question = state["question"]
     intermediate_steps = state.get("intermediate_steps", [])
     chat_history = state.get("chat_history", [])
@@ -417,7 +419,7 @@ workflow.add_node("generate", generate_response)
 workflow.set_entry_point("router")
 
 def decide_next_node(state: AgentState):
-    print(f"---DECISION: Based on route '{state['route']}'---")
+    print(f"---DECISION: Based on route '{state['route']}'---", flush=True)
     if state['route'] == "neo4j":
         return "query_neo4j"
     elif state['route'] == "vector":
