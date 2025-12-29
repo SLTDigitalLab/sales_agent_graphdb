@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from typing import List, Dict
 import os
+from .api import auth
 
 from .api.services.chat_service import chat_histories 
 
@@ -45,5 +46,6 @@ api.include_router(neo4j_utils.router)
 api.include_router(admin.router) 
 api.include_router(email.router)
 api.include_router(neo4j_products.router)
+api.include_router(auth.router)
 
 print("FastAPI application initialized and routers included.")

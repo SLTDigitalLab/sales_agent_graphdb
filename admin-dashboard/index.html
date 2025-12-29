@@ -27,6 +27,7 @@
             margin-bottom: 30px;
             padding-bottom: 20px;
             border-bottom: 1px solid #eee;
+            position: relative; /* Needed for logout button positioning */
         }
 
         .section {
@@ -138,12 +139,24 @@
             max-height: 300px;
             overflow-y: auto;
         }
+        
+        /* Logout Button Style */
+        .logout-btn {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: #dc3545;
+            font-size: 12px;
+        }
+        .logout-btn:hover { background: #bd2130; }
     </style>
 </head>
 
 <body>
     <div class="container">
         <div class="header">
+            <button id="logoutBtn" class="logout-btn">Logout</button>
+            
             <h1>AI Enterprise Agent - Admin Dashboard</h1>
             <p>Manage scraping URLs, trigger data collection, and sync databases</p>
         </div>
@@ -157,14 +170,12 @@
         <div class="section">
             <h2>Primary Configuration</h2>
             
-            <!-- Dynamic Section: Website URLs -->
             <div class="form-group">
                 <label>Website URLs :</label>
                 <div id="websiteUrlsContainer" class="url-list"></div>
                 <button type="button" id="addWebsiteBtn" class="add-btn icon-btn" title="Add URL">+</button>
             </div>
 
-            <!-- Dynamic Section: Product URLs -->
             <div class="form-group">
                 <label>Product Page URLs :</label>
                 <small style="display:block; color:#666; margin-bottom:5px;">If empty, the scraper will auto-discover categories from the home page.</small>
@@ -198,14 +209,12 @@
         <div class="section">
             <h2>Data Management</h2>
             
-            <!-- Row 1 -->
             <div class="button-row">
                 <button id="triggerScrapeBtn" class="secondary">Trigger General Scraping</button>
                 <button id="ingestChromaBtn" class="secondary">Ingest to ChromaDB</button>
                 <button id="clearChromaBtn" class="danger">Clear ChromaDB</button>
             </div>
 
-            <!-- Row 2 -->
             <div class="button-row">
                 <button id="scrapeProductsBtn" class="secondary">Product Scraping </button>
                 <button id="ingestNeo4jBtn" class="secondary">Ingest to Neo4j</button>
@@ -218,6 +227,52 @@
 
     <script>
         const API_BASE = 'http://localhost:8000';
+
+        // --- AUTHENTICATION & SECURITY ---
+
+        // 1. Check if token exists immediately
+        const token = localStorage.getItem('admin_token');
+        if (!token) {
+            window.location.href = 'login.html'; // Redirect to login if no token
+        }
+
+        // 2. Logout function
+        function logout() {
+            localStorage.removeItem('admin_token');
+            window.location.href = 'login.html';
+        }
+
+        // 3. Authenticated Fetch Wrapper
+        // This replaces the standard fetch() to automatically add the JWT token
+        async function authFetch(url, options = {}) {
+            // Ensure headers object exists
+            const headers = options.headers || {};
+            
+            // Add the Authorization header with the Bearer token
+            headers['Authorization'] = `Bearer ${token}`;
+            options.headers = headers;
+
+            try {
+                const response = await fetch(url, options);
+
+                // Handle 401 Unauthorized (Token expired or invalid)
+                if (response.status === 401) {
+                    alert("Session expired or invalid credentials. Please login again.");
+                    logout();
+                    return null; // Stop execution
+                }
+                return response;
+            } catch (error) {
+                // Handle network errors (e.g., API down)
+                console.error("Network or API Error:", error);
+                throw error;
+            }
+        }
+        
+        // Bind Logout Button
+        document.getElementById('logoutBtn').onclick = logout;
+
+        // --- UI HELPERS ---
 
         // Helper: Create a URL input row with remove button
         function createUrlRow(value = '') {
@@ -263,12 +318,15 @@
             return values;
         }
 
-        // --- API FUNCTIONS ---
+        // --- API FUNCTIONS (Now using authFetch) ---
 
         async function loadConfig() {
             setLoading('loadConfigBtn', true);
             try {
-                const response = await fetch(`${API_BASE}/admin/config`);
+                // UPDATED: Using authFetch
+                const response = await authFetch(`${API_BASE}/admin/config`);
+                if (!response) return; // Stop if auth failed
+
                 const config = await response.json();
 
                 // Handle Lists (convert string to list if legacy data exists)
@@ -301,11 +359,14 @@
             };
 
             try {
-                const response = await fetch(`${API_BASE}/admin/config`, {
+                // UPDATED: Using authFetch
+                const response = await authFetch(`${API_BASE}/admin/config`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
+                if (!response) return;
+
                 const result = await response.json();
                 showStatus('configStatus', result.message, false);
             } catch (error) {
@@ -321,7 +382,10 @@
             setLoading(btnId, true);
             showStatus('actionStatus', statusMsg, false);
             try {
-                const response = await fetch(`${API_BASE}/admin/${endpoint}`, { method: 'POST' });
+                // UPDATED: Using authFetch
+                const response = await authFetch(`${API_BASE}/admin/${endpoint}`, { method: 'POST' });
+                if (!response) return;
+
                 const result = await response.json();
                 showResults(result);
                 showStatus('actionStatus', 'Operation completed successfully!', false);
@@ -336,7 +400,10 @@
             setLoading(btnId, true);
             showStatus('actionStatus', statusMsg, false);
             try {
-                const response = await fetch(`${API_BASE}/admin/${endpoint}`, { method: 'DELETE' });
+                // UPDATED: Using authFetch
+                const response = await authFetch(`${API_BASE}/admin/${endpoint}`, { method: 'DELETE' });
+                if (!response) return;
+
                 const result = await response.json();
                 showResults(result);
                 showStatus('actionStatus', 'Operation completed successfully!', false);
@@ -391,8 +458,9 @@
         document.getElementById('clearChromaBtn').onclick = () => triggerDelete('clear-chroma', 'clearChromaBtn', 'Clearing ChromaDB...');
         
         document.getElementById('statusBtn').onclick = async () => {
-            const res = await fetch(`${API_BASE}/admin/status`);
-            showResults(await res.json());
+            // UPDATED: Using authFetch
+            const res = await authFetch(`${API_BASE}/admin/status`);
+            if (res) showResults(await res.json());
         };
 
         window.addEventListener('load', loadConfig);

@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Union
 from src.api.services.config_manager import load_config, save_config
 from src.api.services.scraper_runner import run_general_scraping, run_product_scraping
 from src.api.services import db_service, neo4j_service
+from ..auth import get_current_user
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_user)])
 
 # Updated Data Model to support Lists for the new dynamic UI
 class ConfigUpdate(BaseModel):
