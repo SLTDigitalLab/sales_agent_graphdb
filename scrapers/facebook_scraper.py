@@ -10,7 +10,7 @@ class FacebookScraper:
     # Use the official Apify Actor ID for Facebook Posts Scraper
     APIFY_ACTOR_ID = "apify/facebook-posts-scraper" 
 
-    def __init__(self, page_url, max_posts=10, max_comments_per_post=10):
+    def __init__(self, page_url, max_posts=20, max_comments_per_post=10):
         # NOTE: Make sure the Facebook URL is for a public page, not a profile.
         self.page_url = page_url
         self.max_posts = max_posts

@@ -7,7 +7,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-from bs4 import BeautifulSoup # We bring BeautifulSoup back for cleaning
+from bs4 import BeautifulSoup 
 
 class WebsiteScraper:
     def __init__(self, urls: Union[str, List[str]]):
@@ -40,18 +40,14 @@ class WebsiteScraper:
         """
         soup = BeautifulSoup(html_source, 'html.parser')
 
-        # 1. Remove unwanted elements (Noise)
-        # We remove nav bars, headers, footers, scripts, styles, and cookie banners
+        # 1. Remove unwanted elements
         for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'noscript', 'iframe']):
             tag.decompose()
 
         # 2. Extract text with spacing
-        # get_text(separator=' ') ensures words don't stick together
         text = soup.get_text(separator='\n')
 
         # 3. Clean up whitespace
-        # Collapses multiple newlines into two (paragraph breaks)
-        # and multiple spaces into one.
         lines = (line.strip() for line in text.splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
         clean_text = '\n'.join(chunk for chunk in chunks if chunk)
@@ -70,7 +66,7 @@ class WebsiteScraper:
                 print(f"🌐 Visiting: {url}...")
                 try:
                     driver.get(url)
-                    time.sleep(3) # Wait for JS to load
+                    time.sleep(5) # Wait for JS to load
                     
                     # Get the Title
                     title = driver.title

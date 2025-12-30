@@ -10,7 +10,7 @@ class TikTokScraper:
     # Using the TikTok scraper actor
     APIFY_ACTOR_ID = "clockworks/tiktok-scraper" #Apify actor ID
 
-    def __init__(self, profile_url, max_posts=10):
+    def __init__(self, profile_url, max_posts=20):
         self.profile_url = profile_url.strip()
         
         # Validate TikTok profile URL format
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     tiktok_profile_url = "https://www.tiktok.com/@sltmobitel"  
     
     try:
-        scraper = TikTokScraper(tiktok_profile_url, max_posts=10)  # Limit to 10 posts
+        scraper = TikTokScraper(tiktok_profile_url, max_posts=20)  # Limit to 20 posts
         scraped_data = scraper.scrape()
     except ValueError as e:
         print(f"Configuration Error: {e}")

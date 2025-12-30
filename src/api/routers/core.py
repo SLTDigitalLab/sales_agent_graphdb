@@ -32,7 +32,7 @@ class IngestResponse(BaseModel):
 # Models for Vector Store
 class VectorQueryRequest(BaseModel):
     question: str
-    k: int = 3
+    k: int = 5
 
 class RawChunksResponse(BaseModel):
     results: List[DocumentResult]

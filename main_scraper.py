@@ -40,7 +40,7 @@ async def main_scraper():
         print(f"--- Starting LinkedIn Scraper for {li_url} ---")
         print(f"{'='*60}")
         try:
-            li = LinkedInScraper(li_url, max_posts=5)
+            li = LinkedInScraper(li_url, max_posts=20)
             li.scrape()
         except Exception as e:
             print(f"❌ LinkedIn Scraper Error: {e}")
@@ -54,7 +54,7 @@ async def main_scraper():
         print(f"--- Starting Facebook Scraper (via Apify) for {fb_url} ---")
         print(f"{'='*60}")
         try:
-            fb = FacebookScraper(fb_url, max_posts=10, max_comments_per_post=5)
+            fb = FacebookScraper(fb_url, max_posts=20, max_comments_per_post=10)
             fb.scrape()
         except ValueError as e:
             print(f"⚠️  Skipping Facebook Scraper due to configuration error: {e}")
@@ -68,7 +68,7 @@ async def main_scraper():
     if tiktok_url:
         print(f"\n--- Starting TikTok Scraper for {tiktok_url} ---")
         try:
-            tt = TikTokScraper(tiktok_url, max_posts=10)
+            tt = TikTokScraper(tiktok_url, max_posts=20)
             tt.scrape()
         except ValueError as e:
             print(f"Skipping TikTok Scraper due to configuration error: {e}")

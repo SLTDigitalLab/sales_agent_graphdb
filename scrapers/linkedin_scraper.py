@@ -9,7 +9,7 @@ load_dotenv()
 class LinkedInScraper:
     APIFY_ACTOR_ID = "supreme_coder/linkedin-post" 
 
-    def __init__(self, company_url, max_posts=10):
+    def __init__(self, company_url, max_posts=20):
         self.company_url = company_url.strip()
         
         valid_prefixes = [
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     linkedin_company_url = "https://www.linkedin.com/company/srilankatelecom"  
     
     try:
-        scraper = LinkedInScraper(linkedin_company_url, max_posts=10)  # Limit to 10 posts
+        scraper = LinkedInScraper(linkedin_company_url, max_posts=20)  # Limit to 20 posts
         scraped_data = scraper.scrape()
     except ValueError as e:
         print(f"Configuration Error: {e}")

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 import chromadb 
 
 load_dotenv()
@@ -32,6 +33,13 @@ retriever = vector_store.as_retriever(
     search_kwargs={"k": 5} 
 )
 print("ChromaDB vector store and retriever initialized for service.")
+
+# --- SHARED TEXT SPLITTER ---
+# Used for ALL data sources to ensure consistent chunking
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200
+)
 
 # Helper function to format retrieved documents
 def format_docs(docs: List[Document]) -> str:
@@ -74,37 +82,37 @@ def load_json_data(file_path):
 
 def ingest_data(data_list, source):
     """
-    Converts data list into LangChain Document objects and adds them to the vector store.
-    For Facebook and TikTok data, also stores engagement metrics in metadata.
+    Converts data list into LangChain Document objects, SPLITS THEM, 
+    and adds them to the vector store.
     """
     if not data_list:
         print(f"No data found for {source}. Skipping.")
         return 0
 
-    print(f"Preparing {len(data_list)} {source} entries for ChromaDB...")
+    print(f"Preparing {source} data...")
 
-    documents_to_add: List[Document] = [] 
-    ids_batch: List[str] = []
+    documents_to_process: List[Document] = [] 
     
     for i, entry in enumerate(data_list):
+        # 1. Extract Text
         if isinstance(entry, dict):
-            text = entry.get("text") or entry.get("post_text") or entry.get("title") or entry.get("description")
+            # Website usually uses 'content', Social uses 'text'/'post_text'
+            text = entry.get("content") or entry.get("text") or entry.get("post_text") or entry.get("title") or entry.get("description") or ""
         else:
             text = str(entry)
         
+        # 2. Extract Metadata (if text exists)
         if text and text != "Error scraping post details":
-            # Prepare metadata based on source
-            metadata = {"source": source, "type": "post"}
+            metadata = {"source": source, "type": "post" if source != "website" else "website"}
             
-            # Facebook-specific engagement metrics to metadata
-            if source == "facebook":
+            # Helper to get ID safely
+            if source == "website":
+                metadata["url"] = entry.get("url", "website_unknown")
+            elif source == "facebook":
                 likes = entry.get("likes")
                 shares = entry.get("shares") 
                 comments = entry.get("comments")
                 reactions = entry.get("topReactionsCount")
-                
-                print(f"  Facebook post {i}: likes={likes}, shares={shares}, comments={comments}, reactions={reactions}")
-                
                 metadata.update({
                     "post_id": entry.get("postId", f"{source}_{i}"),
                     "facebook_url": entry.get("url"),
@@ -115,51 +123,48 @@ def ingest_data(data_list, source):
                     "reactions_count": reactions,
                     "engagement_type": "facebook_post"
                 })
-            # TikTok-specific engagement metrics to metadata
             elif source == "tiktok":
                 digg_count = entry.get("diggCount")
                 share_count = entry.get("shareCount")
                 play_count = entry.get("playCount")
                 comment_count = entry.get("commentCount")
-                
-                print(f"  TikTok post {i}: likes={digg_count}, shares={share_count}, plays={play_count}, comments={comment_count}")
-
                 metadata.update({
-                    "post_id": entry.get("id", f"{source}_{i}"), # TikTok uses 'id' field
-                    "tiktok_url": entry.get("webVideoUrl"), # TikTok uses 'webVideoUrl' field
-                    "post_time": entry.get("createTimeISO"), # Use ISO format if available, or 'createTime'
-                    "likes_count": digg_count, # TikTok calls likes "digs" or "hearts"
+                    "post_id": entry.get("id", f"{source}_{i}"),
+                    "tiktok_url": entry.get("webVideoUrl"),
+                    "post_time": entry.get("createTimeISO"),
+                    "likes_count": digg_count,
                     "shares_count": share_count,
                     "comments_count": comment_count,
-                    "plays_count": play_count, # View count
+                    "plays_count": play_count,
                     "engagement_type": "tiktok_post"
                 })
             else:
-                # Default for website, linkedin, etc.
+                # Default (LinkedIn, etc.)
                 metadata["post_id"] = entry.get("postId", f"{source}_{i}")
         
-            # Create document with engagement metrics in metadata
+            # Create the initial document
             doc = Document(
                 page_content=text,
                 metadata=metadata
             )
-            documents_to_add.append(doc)
-            ids_batch.append(f"{source}_post_{i}")
+            documents_to_process.append(doc)
 
-    if documents_to_add:
-        print(f"Ingesting {len(documents_to_add)} documents ({source}) into ChromaDB...")
-        vector_store.add_documents(
-            documents=documents_to_add,
-            ids=ids_batch
-        )
-        print(f"{source} data successfully stored in ChromaDB!")
-        return len(documents_to_add)
+    # 3. SPLIT ALL DOCUMENTS (Website AND Social)
+    # This automatically handles list of docs and preserves metadata for chunks
+    if documents_to_process:
+        print(f"Splitting {len(documents_to_process)} raw {source} items...")
+        split_docs = text_splitter.split_documents(documents_to_process)
+        
+        print(f"Ingesting {len(split_docs)} split chunks ({source}) into ChromaDB...")
+        vector_store.add_documents(documents=split_docs)
+        print(f"{source} data successfully stored!")
+        return len(split_docs)
     else:
         print(f"No valid documents found to ingest for {source}.")
         return 0
 
 # Service functions
-async def get_raw_chunks(query: str, k: int = 3) -> List[DocumentResult]:
+async def get_raw_chunks(query: str, k: int = 5) -> List[DocumentResult]:
     """
     Executes the synchronous retrieval method in a separate thread.
     """
@@ -183,7 +188,7 @@ async def get_raw_chunks(query: str, k: int = 3) -> List[DocumentResult]:
         )
     return results
 
-async def get_formatted_chunks(query: str, k: int = 3) -> str:
+async def get_formatted_chunks(query: str, k: int = 5) -> str:
     """
     Gets relevant documents, removes duplicates based on content, and formats them into a single string.
     """
@@ -209,11 +214,6 @@ async def get_formatted_chunks(query: str, k: int = 3) -> str:
         if content_key not in seen_contents:
             seen_contents.add(content_key)
             unique_docs.append(doc)
-        else:
-            print(f"  - Deduplicated document with content: {doc.page_content[:50]}...")
-    
-    if not unique_docs:
-        print("All retrieved documents were duplicates.")
         
     return format_docs(unique_docs) 
 
@@ -246,6 +246,8 @@ def run_chroma_ingestion() -> int:
     tiktok_data = tiktok_json.get("data", []) if isinstance(tiktok_json, dict) else tiktok_json
 
     total_added = 0
+    
+    # Unified Ingestion calls (Same function for everything now)
     total_added += ingest_data(website_data, "website")
     total_added += ingest_data(linkedin_data, "linkedin")
     total_added += ingest_data(facebook_data, "facebook")

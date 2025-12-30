@@ -61,7 +61,7 @@ def run_general_scraping():
     if fb_url:
         print(f"\n--- Starting Facebook Scraper ---")
         try:
-            fb = FacebookScraper(fb_url, max_posts=10, max_comments_per_post=5)
+            fb = FacebookScraper(fb_url, max_posts=20, max_comments_per_post=10)
             fb.scrape()
             results["facebook"] = "success"
         except Exception as e:
@@ -74,7 +74,7 @@ def run_general_scraping():
     if tiktok_url:
         print(f"\n--- Starting TikTok Scraper ---")
         try:
-            tt = TikTokScraper(tiktok_url, max_posts=10)
+            tt = TikTokScraper(tiktok_url, max_posts=20)
             tt.scrape()
             results["tiktok"] = "success"
         except Exception as e:
