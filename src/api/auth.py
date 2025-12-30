@@ -6,9 +6,12 @@ from pydantic import BaseModel
 from jose import JWTError, jwt
 import os
 import bcrypt 
+from dotenv import load_dotenv  
+
+load_dotenv()
 
 # Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-this")
+SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
