@@ -1,0 +1,244 @@
+import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { Plus, Trash2, Save, RefreshCw } from 'lucide-react'; 
+
+const API_BASE = 'http://localhost:8000';
+
+export default function Dashboard() {
+  const { token, logout } = useAuth();
+  
+  // State for Configuration
+  const [websiteUrls, setWebsiteUrls] = useState(['']);
+  const [productUrls, setProductUrls] = useState(['']);
+  const [socials, setSocials] = useState({ linkedin: '', facebook: '', tiktok: '' });
+  
+  // State for Status & Results
+  const [statusMsg, setStatusMsg] = useState({ text: '', type: '' });
+  const [apiResult, setApiResult] = useState(null);
+  const [loadingAction, setLoadingAction] = useState(null);
+
+  // --- Helpers ---
+  const authFetch = async (endpoint, options = {}) => {
+    const headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+      if (res.status === 401) {
+        logout(); 
+        return null;
+      }
+      return res;
+    } catch (error) {
+      console.error(error);
+      setStatusMsg({ text: 'Network Error', type: 'error' });
+      return null;
+    }
+  };
+
+  // --- Actions ---
+  const loadConfig = async () => {
+    setLoadingAction('loadConfig');
+    const res = await authFetch('/admin/config');
+    if (res && res.ok) {
+      const data = await res.json();
+      const webs = Array.isArray(data.website_urls) ? data.website_urls : (data.website_url ? [data.website_url] : []);
+      const prods = Array.isArray(data.product_urls) ? data.product_urls : (data.products_url ? [data.products_url] : []);
+      
+      setWebsiteUrls(webs.length ? webs : ['']);
+      setProductUrls(prods.length ? prods : ['']);
+      setSocials({
+        linkedin: data.linkedin_url || '',
+        facebook: data.facebook_url || '',
+        tiktok: data.tiktok_url || ''
+      });
+      setStatusMsg({ text: 'Configuration loaded!', type: 'success' });
+    }
+    setLoadingAction(null);
+  };
+
+  const saveConfig = async () => {
+    setLoadingAction('saveConfig');
+    const config = {
+      website_urls: websiteUrls.filter(u => u.trim()),
+      product_urls: productUrls.filter(u => u.trim()),
+      linkedin_url: socials.linkedin || null,
+      facebook_url: socials.facebook || null,
+      tiktok_url: socials.tiktok || null
+    };
+
+    const res = await authFetch('/admin/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+
+    if (res && res.ok) {
+      setStatusMsg({ text: 'Configuration saved!', type: 'success' });
+    } else {
+      setStatusMsg({ text: 'Failed to save config', type: 'error' });
+    }
+    setLoadingAction(null);
+  };
+
+  const triggerAction = async (endpoint, actionId, method = 'POST') => {
+    setLoadingAction(actionId);
+    setStatusMsg({ text: 'Processing...', type: 'success' });
+    setApiResult(null);
+
+    const res = await authFetch(`/admin/${endpoint}`, { method });
+    if (res && res.ok) {
+      const data = await res.json();
+      setApiResult(data);
+      setStatusMsg({ text: 'Action completed!', type: 'success' });
+    } else {
+      setStatusMsg({ text: 'Action failed', type: 'error' });
+    }
+    setLoadingAction(null);
+  };
+
+  useEffect(() => { loadConfig(); }, []);
+
+  const updateUrlList = (setter, list, index, value) => {
+    const newList = [...list];
+    newList[index] = value;
+    setter(newList);
+  };
+
+  const addUrlRow = (setter, list) => setter([...list, '']);
+  const removeUrlRow = (setter, list, index) => setter(list.filter((_, i) => i !== index));
+
+  return (
+    <div className="font-sans space-y-6">
+       
+        {/* Status Message Area */}
+        {statusMsg.text && (
+        <div className={`p-4 rounded-md ${statusMsg.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+            {statusMsg.text}
+        </div>
+        )}
+
+        {/* Configuration Section */}
+        <section className="border border-gray-200 rounded-lg p-6 bg-white shadow-sm">
+        <h2 className="text-xl font-semibold text-gray-700 border-b pb-2 mb-4">Primary Configuration</h2>
+        
+        {/* Website URLs */}
+        <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Website URLs</label>
+            <div className="space-y-2">
+            {websiteUrls.map((url, idx) => (
+                <div key={idx} className="flex gap-2">
+                <input 
+                    type="url" 
+                    placeholder="https://..." 
+                    className="flex-1 rounded-md border border-gray-300 p-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={url}
+                    onChange={(e) => updateUrlList(setWebsiteUrls, websiteUrls, idx, e.target.value)}
+                />
+                <button onClick={() => removeUrlRow(setWebsiteUrls, websiteUrls, idx)} className="p-2 text-red-500 hover:bg-red-100 rounded">
+                    <Trash2 size={18} />
+                </button>
+                </div>
+            ))}
+            <button onClick={() => addUrlRow(setWebsiteUrls, websiteUrls)} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
+                <Plus size={16} /> Add URL
+            </button>
+            </div>
+        </div>
+
+        {/* Product URLs */}
+        <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Product Page URLs</label>
+            <div className="space-y-2">
+            {productUrls.map((url, idx) => (
+                <div key={idx} className="flex gap-2">
+                <input 
+                    type="url" 
+                    placeholder="https://..." 
+                    className="flex-1 rounded-md border border-gray-300 p-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={url}
+                    onChange={(e) => updateUrlList(setProductUrls, productUrls, idx, e.target.value)}
+                />
+                <button onClick={() => removeUrlRow(setProductUrls, productUrls, idx)} className="p-2 text-red-500 hover:bg-red-100 rounded">
+                    <Trash2 size={18} />
+                </button>
+                </div>
+            ))}
+            <button onClick={() => addUrlRow(setProductUrls, productUrls)} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
+                <Plus size={16} /> Add URL
+            </button>
+            </div>
+        </div>
+        
+        {/* Socials */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label className="block text-sm text-gray-600">LinkedIn URL</label>
+                <input className="w-full mt-1 p-2 border rounded" value={socials.linkedin} onChange={(e) => setSocials({...socials, linkedin: e.target.value})} />
+            </div>
+            <div>
+                <label className="block text-sm text-gray-600">Facebook URL</label>
+                <input className="w-full mt-1 p-2 border rounded" value={socials.facebook} onChange={(e) => setSocials({...socials, facebook: e.target.value})} />
+            </div>
+            <div>
+                <label className="block text-sm text-gray-600">TikTok URL</label>
+                <input className="w-full mt-1 p-2 border rounded" value={socials.tiktok} onChange={(e) => setSocials({...socials, tiktok: e.target.value})} />
+            </div>
+        </div>
+
+        <div className="flex gap-4 pt-4 border-t mt-4">
+            <button 
+            onClick={loadConfig} 
+            disabled={loadingAction === 'loadConfig'}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+            >
+            <RefreshCw size={16} className={loadingAction === 'loadConfig' ? 'animate-spin' : ''}/> Reload
+            </button>
+            <button 
+            onClick={saveConfig} 
+            disabled={loadingAction === 'saveConfig'}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 shadow-sm"
+            >
+            <Save size={16} /> Save Changes
+            </button>
+        </div>
+        </section>
+
+        {/* Actions Section */}
+        <section className="border border-gray-200 rounded-lg p-6 bg-white shadow-sm">
+        <h2 className="text-xl font-semibold text-gray-700 mb-4">Data Management</h2>
+        
+        <div className="flex flex-wrap gap-3 mb-6">
+            <ActionButton label="Trigger Scraping" onClick={() => triggerAction('trigger-scraper', 'scrape')} loading={loadingAction === 'scrape'} />
+            <ActionButton label="Scrape Products" onClick={() => triggerAction('scrape-products', 'prod')} loading={loadingAction === 'prod'} />
+            <ActionButton label="Ingest Chroma" onClick={() => triggerAction('ingest-chroma', 'chroma')} loading={loadingAction === 'chroma'} />
+            <ActionButton label="Ingest Neo4j" onClick={() => triggerAction('ingest-neo4j', 'neo4j')} loading={loadingAction === 'neo4j'} />
+            <button 
+            onClick={() => triggerAction('clear-chroma', 'clear', 'DELETE')}
+            disabled={loadingAction === 'clear'}
+            className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50"
+            >
+            {loadingAction === 'clear' ? 'Clearing...' : 'Clear Database'}
+            </button>
+        </div>
+
+        {/* Results Console */}
+        {apiResult && (
+            <div className="bg-gray-900 text-green-400 p-4 rounded-md font-mono text-sm overflow-auto max-h-64 shadow-inner">
+                <pre>{JSON.stringify(apiResult, null, 2)}</pre>
+            </div>
+        )}
+        </section>
+    </div>
+  );
+}
+
+function ActionButton({ label, onClick, loading }) {
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={loading}
+      className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded shadow-sm hover:bg-gray-50 disabled:opacity-50"
+    >
+      {loading ? 'Processing...' : label}
+    </button>
+  );
+}
