@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+# from fastapi.staticfiles import StaticFiles # (Optional) You can remove this import now
 from typing import List, Dict
 import os
 from .api import auth
@@ -8,7 +8,7 @@ from .api import auth
 from .api.services.chat_service import chat_histories 
 
 # Importing Routers
-from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin, email,neo4j_products
+from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin, email, neo4j_products
 
 print("FastAPI application initialized and routers included.")
 
@@ -33,10 +33,12 @@ api.add_middleware(
     allow_headers=["*"], 
 )
 
-# Serve admin dashboard
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
-admin_dashboard_path = os.path.join(project_root, 'admin-dashboard')
-api.mount("/admin-ui", StaticFiles(directory=admin_dashboard_path, html=True), name="admin-ui")
+# --- DELETED SECTION ---
+# The admin dashboard is now a separate React app, so we don't serve it statically here.
+# project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+# admin_dashboard_path = os.path.join(project_root, 'admin-dashboard')
+# api.mount("/admin-ui", StaticFiles(directory=admin_dashboard_path, html=True), name="admin-ui")
+# -----------------------
 
 # Register Routers 
 api.include_router(core.router)      
