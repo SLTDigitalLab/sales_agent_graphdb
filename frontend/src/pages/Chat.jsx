@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Trash2, Bot, User, Loader2, AlertCircle, Plus, Minus, X } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function Chat() {
   const [messages, setMessages] = useState([]);

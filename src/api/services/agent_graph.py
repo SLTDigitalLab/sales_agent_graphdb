@@ -11,7 +11,8 @@ import httpx
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-API_BASE_URL = "http://localhost:8000" 
+# Default to localhost for local testing, but allow Docker to override it
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # Initialize LLM 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)

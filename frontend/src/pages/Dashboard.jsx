@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Trash2, Save, RefreshCw } from 'lucide-react'; 
 
-const API_BASE = 'http://localhost:8000';
+// Uses the VITE_ variable if it exists (Docker), otherwise falls back to localhost (Local)
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function Dashboard() {
   const { token, logout } = useAuth();
@@ -216,7 +217,7 @@ export default function Dashboard() {
             disabled={loadingAction === 'clear'}
             className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50"
             >
-            {loadingAction === 'clear' ? 'Clearing...' : 'Clear Database'}
+            {loadingAction === 'clear' ? 'Clearing...' : 'Clear Chroma DB Data'}
             </button>
         </div>
 

@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 # from fastapi.staticfiles import StaticFiles # (Optional) You can remove this import now
 from typing import List, Dict
 import os
+from dotenv import load_dotenv 
+load_dotenv()
 from .api import auth
 
 from .api.services.chat_service import chat_histories 
@@ -18,12 +20,20 @@ api = FastAPI(
     description="API for interacting with the LangGraph agent."
 )
 
-ALLOWED_ORIGINS = [
-    "http://localhost:5173", 
-    "http://127.0.0.1:5173", 
-    "http://localhost:5174", 
-    "http://localhost:3000", 
-]
+# Load origins from .env (comma-separated), or use default local list
+env_origins = os.getenv("ALLOWED_ORIGINS")
+
+if env_origins:
+    # If .env has "http://mysite.com,http://localhost:9000", split it into a list
+    ALLOWED_ORIGINS = env_origins.split(",")
+else:
+    # Default fallback for local dev
+    ALLOWED_ORIGINS = [
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173", 
+        "http://localhost:5174", 
+        "http://localhost:3000", 
+    ]
 
 api.add_middleware(
     CORSMiddleware,
