@@ -1,0 +1,18 @@
+# --- Large Directories to Ignore ---
+venv
+frontend
+admin-dashboard
+node_modules
+
+# --- Data Stores (Volume Mapped) ---
+chroma_data
+data
+
+# --- System & Cache Files ---
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
