@@ -4,9 +4,46 @@ AI-powered enterprise assistant for knowledge and product intelligence. It combi
 
 ---
 
-## Setup and Installation
+## 🚀 Option 1: Docker 
 
-Follow these steps to set up your local development environment.
+This is the easiest way to run the application. It guarantees the environment works exactly as intended without installing dependencies locally.
+
+### 1. Prerequisites
+* **Docker Desktop** (Installed and running).
+* **Git**.
+
+### 2. Setup & Run
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd AI-Enterprise-Agent
+    ```
+
+2.  **Configure Environment Variables:**
+    * Create a file named `.env` in the **root folder** with API keys, etc.
+
+3.  **Launch the App:**
+    Run the following command in the project root:
+    ```bash
+    docker-compose up
+    ```
+    *(This may take a few minutes the first time to build the images).*
+
+### 3. Access the Application
+Once the logs settle, the application is live:
+
+* **Chat Interface:** [http://localhost:3000](http://localhost:3000)
+* **Admin Dashboard:** [http://localhost:3000/admin](http://localhost:3000/admin)
+* **Backend API Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### 4. Stopping the App
+Press `Ctrl+C` in the terminal, or run:
+```bash
+docker-compose down
+```
+
+## 🚀 Option 2: Manual Setup 
+
 
 ### 1. Prerequisites
 
@@ -47,7 +84,7 @@ Once the environment is set up, follow these steps to run the application:
 5.  **Access the Admin Dashboard:**
     Acess the Admin Dashboard to controll scraping and data ingection.
     
-    The Admin Dashboard will be available at `http://localhost:8000/admin-ui/`.
+    The Admin Dashboard will be available at `http://localhost:5173/admin`.
     
 6.  **Run the chat application:**
     Navigate to the `frontend` directory and start the development server.
