@@ -27,10 +27,6 @@ async def get_products_for_order_form():
         return {"products": []} # Return empty list if Neo4j is unavailable
 
     try:
-        # Adjust this Cypher query based on your actual Neo4j schema
-        # This query assumes Product nodes have 'sku', 'name', 'price' properties
-        # and are connected to Category nodes via an 'IN_CATEGORY' relationship
-        # Example query structure:
         cypher_query = """
         MATCH (p:Product)-[:IN_CATEGORY]->(c:Category)
         RETURN p.sku AS sku, p.name AS name, p.price AS price, c.name AS category_name

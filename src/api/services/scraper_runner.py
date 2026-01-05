@@ -38,7 +38,6 @@ def run_general_scraping():
     if website_urls:
         print(f"\n--- Starting Website Scraper for {len(website_urls)} URLs ---")
         try:
-            # Pass the list directly to the Selenium Website Scraper
             ws = WebsiteScraper(website_urls)
             ws.scrape()
             results["website"] = f"success ({len(website_urls)} sites scraped)"
@@ -104,7 +103,6 @@ def run_product_scraping():
 
     print(f"\n--- Starting Product Scraper (Selenium) ---")
     try:
-        # Pass the list (or None) to the scraper function
         scrape_catalog(custom_start_urls=product_urls)
         results["products"] = "success (saved to products.csv)"
     except Exception as e:

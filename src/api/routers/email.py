@@ -10,7 +10,7 @@ class ProductItem(BaseModel):
     product_name: str
     quantity: int
 
-# Pydantic model to validate the incoming request data
+# Model to validate the incoming request data
 class OrderRequest(BaseModel):
     # An array of ProductItem
     items: List[ProductItem]

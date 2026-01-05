@@ -7,7 +7,7 @@ from typing import Optional
 from ..services import chat_service 
 from .core import QueryRequest, QueryResponse, ClearRequest, ClearResponse
 
-# Define the router with the version prefix and tag
+# Define the router 
 router = APIRouter(prefix="/v1", tags=["Conversational Agent"])
 
 # --- CHAT ENDPOINT: STREAMING ---

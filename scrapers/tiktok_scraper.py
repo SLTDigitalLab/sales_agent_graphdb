@@ -7,7 +7,6 @@ from datetime import datetime
 load_dotenv() 
 
 class TikTokScraper:
-    # Using the TikTok scraper actor
     APIFY_ACTOR_ID = "clockworks/tiktok-scraper" #Apify actor ID
 
     def __init__(self, profile_url, max_posts=20):

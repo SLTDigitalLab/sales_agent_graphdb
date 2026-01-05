@@ -1,6 +1,5 @@
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-# from fastapi.staticfiles import StaticFiles # (Optional) You can remove this import now
 from typing import List, Dict
 import os
 from dotenv import load_dotenv 
@@ -20,11 +19,9 @@ api = FastAPI(
     description="API for interacting with the LangGraph agent."
 )
 
-# Load origins from .env (comma-separated), or use default local list
 env_origins = os.getenv("ALLOWED_ORIGINS")
 
 if env_origins:
-    # If .env has "http://mysite.com,http://localhost:9000", split it into a list
     ALLOWED_ORIGINS = env_origins.split(",")
 else:
     # Default fallback for local dev
@@ -42,13 +39,6 @@ api.add_middleware(
     allow_methods=["*"], 
     allow_headers=["*"], 
 )
-
-# --- DELETED SECTION ---
-# The admin dashboard is now a separate React app, so we don't serve it statically here.
-# project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
-# admin_dashboard_path = os.path.join(project_root, 'admin-dashboard')
-# api.mount("/admin-ui", StaticFiles(directory=admin_dashboard_path, html=True), name="admin-ui")
-# -----------------------
 
 # Register Routers 
 api.include_router(core.router)      

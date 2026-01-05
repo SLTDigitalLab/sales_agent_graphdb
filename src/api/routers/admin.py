@@ -8,13 +8,12 @@ from ..auth import get_current_user
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_user)])
 
-# Updated Data Model to support Lists for the new dynamic UI
 class ConfigUpdate(BaseModel):
-    # Accept List[str] OR str (for backward compatibility)
+    # Accept List[str] OR str 
     website_urls: Optional[Union[List[str], str]] = None 
     product_urls: Optional[Union[List[str], str]] = None
     
-    # Legacy fields (kept for safety, though mapped to lists in logic)
+    # Legacy fields 
     website_url: Optional[str] = None
     products_url: Optional[str] = None
     
@@ -50,7 +49,6 @@ async def get_config():
 async def update_config(update: ConfigUpdate):
     """Update scraping configuration."""
     config = load_config()
-    # Exclude None values so we don't overwrite existing settings with null
     update_data = update.dict(exclude_none=True)
     
     # Merge updates into existing config

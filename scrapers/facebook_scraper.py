@@ -7,7 +7,7 @@ from datetime import datetime
 load_dotenv() 
 
 class FacebookScraper:
-    # Use the official Apify Actor ID for Facebook Posts Scraper
+    # Apify Actor ID for Facebook Posts Scraper
     APIFY_ACTOR_ID = "apify/facebook-posts-scraper" 
 
     def __init__(self, page_url, max_posts=20, max_comments_per_post=10):
@@ -48,10 +48,9 @@ class FacebookScraper:
                 timeout_secs=600 # 10 minute timeout
             )
 
-            # 3. FIX APPLIED: Fetch and structure the results using list_items()
+            # 3. Fetch and structure the results using list_items()
             dataset_client = client.dataset(run["defaultDatasetId"])
             
-            # The .list_items() method must be used, and we access the .items attribute for the list.
             dataset_items = dataset_client.list_items().items
             
             # 4. Prepare the final output structure

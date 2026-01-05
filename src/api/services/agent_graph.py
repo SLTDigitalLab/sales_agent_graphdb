@@ -155,7 +155,7 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
 
     initial_message = "It sounds like you'd like to place an order. I can help you with that. Please fill out the form below."
 
-    # Create the special response structure WITH the product info
+    # Create the special response structure with the product info
     form_signal = {
         "type": "order_form", 
         "message": initial_message, 

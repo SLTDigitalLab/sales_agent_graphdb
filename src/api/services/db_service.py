@@ -34,7 +34,7 @@ retriever = vector_store.as_retriever(
 )
 print("ChromaDB vector store and retriever initialized for service.")
 
-# --- SHARED TEXT SPLITTER ---
+# TEXT SPLITTER
 # Used for ALL data sources to ensure consistent chunking
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
@@ -150,7 +150,6 @@ def ingest_data(data_list, source):
             documents_to_process.append(doc)
 
     # 3. SPLIT ALL DOCUMENTS (Website AND Social)
-    # This automatically handles list of docs and preserves metadata for chunks
     if documents_to_process:
         print(f"Splitting {len(documents_to_process)} raw {source} items...")
         split_docs = text_splitter.split_documents(documents_to_process)
@@ -247,7 +246,7 @@ def run_chroma_ingestion() -> int:
 
     total_added = 0
     
-    # Unified Ingestion calls (Same function for everything now)
+    # Unified Ingestion calls
     total_added += ingest_data(website_data, "website")
     total_added += ingest_data(linkedin_data, "linkedin")
     total_added += ingest_data(facebook_data, "facebook")
