@@ -16,10 +16,17 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.join(script_dir, '..', '..', '..') 
 CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
-# Initialize Neo4j connections
+#Initialize variables GLOBALLY first 
+graph = None
+neo4j_qa_chain = None
+neo4j_available = False
+
+# Initialize LLM
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 try:
+    print(f"Attempting to connect to Neo4j at {NEO4J_URI}...")
+    
     graph = Neo4jGraph(
         url=NEO4J_URI,
         username=NEO4J_USER,
@@ -100,10 +107,11 @@ try:
     )
     print("Neo4j QA Chain service initialized.")
     neo4j_available = True
+
 except Exception as e:
-    print(f"Error initializing Neo4j connection: {e}")
+    print(f"⚠️ WARNING: Neo4j connection failed. The app will run without Graph features.")
+    print(f"Error details: {e}")
     neo4j_available = False
-    neo4j_qa_chain = None
 
 class Neo4jIngestor:
     def __init__(self, uri, user, password):
@@ -118,15 +126,12 @@ class Neo4jIngestor:
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Category) REQUIRE c.name IS UNIQUE")
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (p:Product) REQUIRE p.sku IS UNIQUE")
             
-            # 2. FULLTEXT SEARCH INDEX (The key to fuzzy matching)
-            # This allows queries like "routter" to find "Router"
             print("Creating Fulltext Search Index on Product Names...")
             session.run("CREATE FULLTEXT INDEX product_name_index IF NOT EXISTS FOR (p:Product) ON EACH [p.name]")
 
     def clear_database(self):
         with self.driver.session(database="neo4j") as session:
             session.run("MATCH (n) DETACH DELETE n")
-            # Note: We do NOT drop the index here, so it persists
             
     def ingest_data(self, csv_file_path):
         ingest_query = """
@@ -151,7 +156,7 @@ class Neo4jIngestor:
 def run_graph_query(question: str) -> str:
     """Runs the QA chain for a given question."""
     if not neo4j_available or neo4j_qa_chain is None:
-        return "Error: Neo4j database is currently unavailable."
+        return "Sorry, product database is currently unavailable (Connection Error)."
     try:
         result = neo4j_qa_chain.invoke({"query": question})
         return result.get('result', "Error: No result found.")
@@ -161,6 +166,8 @@ def run_graph_query(question: str) -> str:
 def run_neo4j_ingestion() -> int:
     """Clears and re-loads the Neo4j database."""
     print("Neo4j Service: Received ingestion request.")
+    
+    
     ingestor = None
     try:
         ingestor = Neo4jIngestor(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
@@ -178,9 +185,13 @@ def run_neo4j_ingestion() -> int:
         processed_count = ingestor.ingest_data(CSV_FILE)
         print(f"Neo4j ingestion complete. Processed {processed_count} rows.")
         
-        print("🔄 Refreshing Graph Schema for LLM...")
-        graph.refresh_schema()
-        print("✅ Schema Refreshed!")
+        # Only try to refresh schema if graph object was successfully created
+        if graph:
+            print("🔄 Refreshing Graph Schema for LLM...")
+            graph.refresh_schema()
+            print("✅ Schema Refreshed!")
+        else:
+            print("⚠️ Skipping Schema refresh because 'graph' object is not initialized.")
 
         return processed_count
     finally:
