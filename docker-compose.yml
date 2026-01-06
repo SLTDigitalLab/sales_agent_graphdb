@@ -17,18 +17,31 @@ services:
       - ./chroma_data:/app/chroma_data
       - ./data:/app/data
       - ./src:/app/src 
-    
     command: uvicorn src.main:api --host 0.0.0.0 --port 8000 --reload 
-    
     restart: always
 
-  # Frontend
+  # Frontend (Vite Development)
   frontend:
-    image: enterprise-agent-frontend
+    image: enterprise-agent-frontend-dev
     container_name: agent_frontend
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: development 
+    
+    # Map Local Port 3000
     ports:
-      - "3000:80"    
+      - "3000:5173"  
+      
+    volumes:
+      - ./frontend:/app       
+      - /app/node_modules       
+    
+    command: npm run dev -- --host 
+    
+    environment:
+      - VITE_API_URL=http://localhost:8000 
+      # - VITE_API_URL=http://backend:8000 # For Server-Side Rendering
+      
     depends_on:
       - backend      
     restart: always
