@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Trash2, Bot, User, Loader2, AlertCircle, Plus, Minus, X } from 'lucide-react';
+import SEO from '../components/SEO'; 
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -465,6 +466,12 @@ function Chat() {
   // Return
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      
+      {/* 2. Add the SEO Component here */}
+      <SEO 
+        title="Chat Assistant" 
+        description="Ask our AI Agent about SLT products, services, and enterprise knowledge. Get instant answers regarding product prices and specifications."
+      />
 
       {/* Existing Clear Confirmation Modal */}
       {showClearConfirm && (

@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Block Google from the Admin Panel
+Disallow: /admin
+Disallow: /admin/login
+
+# Link to the Sitemap (Update with your real domain later)
+Sitemap: https://your-website-domain.com/sitemap.xml
