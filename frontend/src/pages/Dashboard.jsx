@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Trash2, Save, RefreshCw } from 'lucide-react'; 
+import { Plus, Trash2, Save, RefreshCw, Database, Globe, ShoppingBag } from 'lucide-react'; 
 
 // Uses the VITE_ variable if it exists (Docker), otherwise falls back to localhost (Local)
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -110,15 +110,15 @@ export default function Dashboard() {
   return (
     <div className="font-sans space-y-6">
        
-        {/* Status Message Area */}
-        {statusMsg.text && (
+       {/* Status Message Area */}
+       {statusMsg.text && (
         <div className={`p-4 rounded-md ${statusMsg.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
             {statusMsg.text}
         </div>
-        )}
+       )}
 
-        {/* Configuration Section */}
-        <section className="border border-gray-200 rounded-lg p-6 bg-white shadow-sm">
+       {/* Configuration Section */}
+       <section className="border border-gray-200 rounded-lg p-6 bg-white shadow-sm">
         <h2 className="text-xl font-semibold text-gray-700 border-b pb-2 mb-4">Primary Configuration</h2>
         
         {/* Website URLs */}
@@ -170,17 +170,17 @@ export default function Dashboard() {
         </div>
         
         {/* Socials */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div>
-                <label className="block text-sm text-gray-600">LinkedIn URL</label>
+                <label className="block text-sm font-medium text-gray-700">LinkedIn URL</label>
                 <input className="w-full mt-1 p-2 border rounded" value={socials.linkedin} onChange={(e) => setSocials({...socials, linkedin: e.target.value})} />
             </div>
             <div>
-                <label className="block text-sm text-gray-600">Facebook URL</label>
+                <label className="block text-sm font-medium text-gray-700">Facebook URL</label>
                 <input className="w-full mt-1 p-2 border rounded" value={socials.facebook} onChange={(e) => setSocials({...socials, facebook: e.target.value})} />
             </div>
             <div>
-                <label className="block text-sm text-gray-600">TikTok URL</label>
+                <label className="block text-sm font-medium text-gray-700">TikTok URL</label>
                 <input className="w-full mt-1 p-2 border rounded" value={socials.tiktok} onChange={(e) => setSocials({...socials, tiktok: e.target.value})} />
             </div>
         </div>
@@ -201,33 +201,77 @@ export default function Dashboard() {
             <Save size={16} /> Save Changes
             </button>
         </div>
-        </section>
+       </section>
 
-        {/* Actions Section */}
-        <section className="border border-gray-200 rounded-lg p-6 bg-white shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-700 mb-4">Data Management</h2>
+       {/* Actions Section */}
+       <section className="border border-gray-200 rounded-lg p-6 bg-white shadow-sm">
+        <h2 className="text-xl font-semibold text-gray-700 mb-6">Data Management</h2>
         
-        <div className="flex flex-wrap gap-3 mb-6">
-            <ActionButton label="Trigger Scraping" onClick={() => triggerAction('trigger-scraper', 'scrape')} loading={loadingAction === 'scrape'} />
-            <ActionButton label="Scrape Products" onClick={() => triggerAction('scrape-products', 'prod')} loading={loadingAction === 'prod'} />
-            <ActionButton label="Ingest Chroma" onClick={() => triggerAction('ingest-chroma', 'chroma')} loading={loadingAction === 'chroma'} />
-            <ActionButton label="Ingest Neo4j" onClick={() => triggerAction('ingest-neo4j', 'neo4j')} loading={loadingAction === 'neo4j'} />
-            <button 
-            onClick={() => triggerAction('clear-chroma', 'clear', 'DELETE')}
-            disabled={loadingAction === 'clear'}
-            className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50"
-            >
-            {loadingAction === 'clear' ? 'Clearing...' : 'Clear Chroma DB Data'}
-            </button>
+        {/* GROUP 1: General Knowledge (Vector DB) */}
+        <div className="mb-8">
+            <div className="flex items-center gap-2 mb-4 text-gray-800 font-medium pb-2 border-b border-gray-100">
+                <Globe size={18} className="text-indigo-600" />
+                <h3>General Knowledge (Vector DB)</h3>
+            </div>
+            <div className="flex flex-wrap gap-3">
+                <ActionButton 
+                    label="Trigger Scraping" 
+                    onClick={() => triggerAction('trigger-scraper', 'scrape')} 
+                    loading={loadingAction === 'scrape'} 
+                />
+                <ActionButton 
+                    label="Ingest Vector DB" 
+                    onClick={() => triggerAction('ingest-chroma', 'chroma')} 
+                    loading={loadingAction === 'chroma'} 
+                />
+                <button 
+                    onClick={() => triggerAction('clear-chroma', 'clear-vector', 'DELETE')}
+                    disabled={loadingAction === 'clear-vector'}
+                    className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50 text-sm font-medium transition-colors"
+                >
+                    {loadingAction === 'clear-vector' ? 'Clearing...' : 'Clear Vector DB Data'}
+                </button>
+            </div>
+        </div>
+
+        {/* GROUP 2: Product Catalog (Graph DB) */}
+        <div>
+            <div className="flex items-center gap-2 mb-4 text-gray-800 font-medium pb-2 border-b border-gray-100">
+                <ShoppingBag size={18} className="text-indigo-600" />
+                <h3>Product Catalog (Graph DB)</h3>
+            </div>
+            <div className="flex flex-wrap gap-3">
+                <ActionButton 
+                    label="Scrape Products" 
+                    onClick={() => triggerAction('scrape-products', 'prod')} 
+                    loading={loadingAction === 'prod'} 
+                />
+                <ActionButton 
+                    label="Ingest Graph DB" 
+                    onClick={() => triggerAction('ingest-neo4j', 'neo4j')} 
+                    loading={loadingAction === 'neo4j'} 
+                />
+                <button 
+                    onClick={() => triggerAction('clear-neo4j', 'clear-graph', 'DELETE')}
+                    disabled={loadingAction === 'clear-graph'}
+                    className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50 text-sm font-medium transition-colors"
+                >
+                    {loadingAction === 'clear-graph' ? 'Clearing...' : 'Clear Graph DB Data'}
+                </button>
+            </div>
         </div>
 
         {/* Results Console */}
         {apiResult && (
-            <div className="bg-gray-900 text-green-400 p-4 rounded-md font-mono text-sm overflow-auto max-h-64 shadow-inner">
+            <div className="mt-8 bg-gray-900 text-green-400 p-4 rounded-md font-mono text-sm overflow-auto max-h-64 shadow-inner border border-gray-800">
+                <div className="flex justify-between items-center mb-2 border-b border-gray-700 pb-1">
+                    <span className="text-gray-500 text-xs uppercase tracking-wider">Console Output</span>
+                    <button onClick={() => setApiResult(null)} className="text-xs text-gray-500 hover:text-white">Clear</button>
+                </div>
                 <pre>{JSON.stringify(apiResult, null, 2)}</pre>
             </div>
         )}
-        </section>
+       </section>
     </div>
   );
 }
@@ -237,7 +281,7 @@ function ActionButton({ label, onClick, loading }) {
     <button 
       onClick={onClick} 
       disabled={loading}
-      className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded shadow-sm hover:bg-gray-50 disabled:opacity-50"
+      className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded shadow-sm hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 text-sm font-medium transition-all"
     >
       {loading ? 'Processing...' : label}
     </button>
