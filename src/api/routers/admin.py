@@ -142,3 +142,18 @@ async def clear_chroma_data():
             "error": str(e),
             "status": "error"
         }
+
+@router.delete("/clear-neo4j")
+async def clear_neo4j_data():
+    """Clear all nodes and relationships from Neo4j."""
+    print("--- Admin API: Received request to clear Neo4j ---")
+    try:
+        # We need to make sure this function exists in your service file (Step 2)
+        message = neo4j_service.run_clear_neo4j() 
+        return {
+            "message": message,
+            "status": "success"
+        }
+    except Exception as e:
+        print(f"Error clearing Neo4j: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

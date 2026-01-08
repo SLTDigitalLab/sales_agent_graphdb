@@ -68,12 +68,12 @@ try:
 
     **SEARCH RULES (CRITICAL):**
     1. **Fuzzy Search:** When the user searches for a product name (e.g. "router", "wifi", "camera"), use the fulltext index with the `~` fuzzy operator.
-       Syntax: `CALL db.index.fulltext.queryNodes("product_name_index", "search_term~") YIELD node AS p`
+        Syntax: `CALL db.index.fulltext.queryNodes("product_name_index", "search_term~") YIELD node AS p`
     2. **Case Insensitivity:** The fulltext index handles case automatically.
     3. **Return Fields:** Always return `p.name`, `p.price`, and `p.url`.
     4. **Synonyms:**
-       - "wifi" -> search for "wifi~ OR wi-fi~"
-       - "ups" -> search for "ups~ OR power backup~"
+        - "wifi" -> search for "wifi~ OR wi-fi~"
+        - "ups" -> search for "ups~ OR power backup~"
 
     **Examples:**
 
@@ -167,7 +167,6 @@ def run_neo4j_ingestion() -> int:
     """Clears and re-loads the Neo4j database."""
     print("Neo4j Service: Received ingestion request.")
     
-    
     ingestor = None
     try:
         ingestor = Neo4jIngestor(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
@@ -194,6 +193,30 @@ def run_neo4j_ingestion() -> int:
             print("⚠️ Skipping Schema refresh because 'graph' object is not initialized.")
 
         return processed_count
+    finally:
+        if ingestor:
+            ingestor.close()
+
+# --- NEW FUNCTION FOR CLEAR BUTTON ---
+def run_clear_neo4j() -> str:
+    """
+    Connects to Neo4j and deletes all data.
+    Used by the Admin Dashboard 'Clear Graph DB' button.
+    """
+    print("Neo4j Service: Received CLEAR request.")
+    ingestor = None
+    try:
+        ingestor = Neo4jIngestor(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
+        ingestor.clear_database()
+        
+        # If the graph object exists, refresh schema (it will now be empty)
+        if graph:
+             graph.refresh_schema()
+             
+        return "Graph database cleared successfully."
+    except Exception as e:
+        print(f"❌ Error clearing Neo4j: {e}")
+        raise e
     finally:
         if ingestor:
             ingestor.close()
