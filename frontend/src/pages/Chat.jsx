@@ -709,9 +709,7 @@ function Chat() {
               )}
             </button>
           </form>
-          <p className="text-xs text-slate-400 mt-3 text-center font-medium">
-            Session ID: {sessionId} • AI Enterprise Agent
-          </p>
+          <div className="h-9 mt-3"></div>
         </div>
       </div>
     </div>

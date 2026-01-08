@@ -4,7 +4,7 @@ export default function SEO({ title, description, name = 'AI Enterprise Agent' }
   return (
     <Helmet>
       {/* Browser Tab Title */}
-      <title>{title} | {name}</title>
+      <title> {name}</title>
       <meta name='description' content={description} />
       
       {/* Social Media Preview (Open Graph) */}
