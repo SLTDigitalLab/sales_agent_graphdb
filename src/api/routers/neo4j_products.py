@@ -1,4 +1,5 @@
 # src/api/routers/neo4j_products.py
+import asyncio
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List
@@ -24,7 +25,7 @@ async def get_products_for_order_form():
     print("Neo4j Service: Received request for products for order form.")
     
     if not neo4j_available or graph is None:
-        return {"products": []} # Return empty list if Neo4j is unavailable
+        return {"products": []} 
 
     try:
         cypher_query = """
@@ -32,10 +33,8 @@ async def get_products_for_order_form():
         RETURN p.sku AS sku, p.name AS name, p.price AS price, c.name AS category_name
         ORDER BY c.name, p.name
         """
-
-        result = graph.query(cypher_query)
-        print(f"Neo4j query result for order form: {result}")
-
+        result = await asyncio.to_thread(graph.query, cypher_query)
+    
         products_list = []
         for record in result:
             product_item = ProductItem(

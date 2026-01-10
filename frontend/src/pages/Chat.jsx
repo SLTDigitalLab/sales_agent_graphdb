@@ -129,8 +129,7 @@ function Chat() {
     }));
   };
 
-
-  // Inline Order Form Component
+// Inline Order Form Component
   const InlineOrderForm = ({ requestId, initialMessage, savedState, onOrderSuccess, onSubmitError, prefillProduct }) => {
     const [items, setItems] = useState([
         { 
@@ -152,7 +151,6 @@ function Chat() {
     useEffect(() => {
       const fetchProductsForForm = async () => {
         try {
-          console.log("InlineOrderForm: Fetching products from Neo4j...");
           const response = await fetch(`${API_BASE_URL}/db/graph/products-for-order-form`);
           if (!response.ok) {
             throw new Error(`Failed to fetch products: ${response.status}`);
@@ -160,18 +158,37 @@ function Chat() {
           const data = await response.json();
           setProducts(data.products);
           setLoadingProducts(false);
-          console.log(`InlineOrderForm: Fetched ${data.products.length} products from Neo4j.`);
         } catch (err) {
           console.error("Error fetching products for order form:", err);
-          setProducts([]); // Set to empty array on error
+          setProducts([]); 
           setLoadingProducts(false);
-          setFormError(`Failed to load products: ${err.message}. Please try again later.`);
+          setFormError(`Failed to load products: ${err.message}.`);
         }
       };
 
       fetchProductsForForm();
-    }, []); // Empty dependency array means this runs once on mount
+    }, []);
 
+    useEffect(() => {
+        if (!loadingProducts && products.length > 0 && prefillProduct) {
+            const currentSelection = items[0].productId;
+            
+            //find the "Official" name from the list
+            const normalize = (str) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+            const target = normalize(prefillProduct);
+
+            const match = products.find(p => normalize(p.name) === target);
+
+            if (match && match.name !== currentSelection) {
+                console.log(`Auto-correcting product selection: '${currentSelection}' -> '${match.name}'`);
+                setItems(prev => {
+                    const newItems = [...prev];
+                    newItems[0].productId = match.name; 
+                    return newItems;
+                });
+            }
+        }
+    }, [loadingProducts, products, prefillProduct]);
     const handleItemChange = (index, field, value) => {
       setItems(prevItems => {
         const newItems = [...prevItems];
@@ -189,7 +206,7 @@ function Chat() {
     };
 
     const removeProductLine = (index) => {
-      if (items.length > 1) { // Only allow removal if there's more than one item
+      if (items.length > 1) { 
         setItems(prevItems => prevItems.filter((_, i) => i !== index));
       }
     };

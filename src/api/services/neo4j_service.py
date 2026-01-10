@@ -16,7 +16,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.join(script_dir, '..', '..', '..') 
 CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
-#Initialize variables GLOBALLY first 
+# Initialize variables GLOBALLY first 
 graph = None
 neo4j_qa_chain = None
 neo4j_available = False
@@ -35,7 +35,7 @@ try:
     graph.refresh_schema()
     print("Neo4j schema refreshed for service.")
     
-    # --- 1. QA PROMPT (Formatting Rules) ---
+    # --- 1. QA PROMPT ---
     QA_TEMPLATE_TEXT = """
     You are a helpful AI sales assistant for SLT Lifestore.
     Use the provided context to answer the user's question.
@@ -54,45 +54,37 @@ try:
     """
     QA_PROMPT = PromptTemplate(input_variables=["context", "question"], template=QA_TEMPLATE_TEXT)
 
-    # --- 2. UPDATED CYPHER PROMPT (Fuzzy Search Logic) ---
+    # --- 2. UPDATED CYPHER PROMPT ---
     CYPHER_GENERATION_TEMPLATE = """
     You are an expert Cypher query generator.
     
     **Schema:**
     Node types: (:Product), (:Category)
-    Relationships: (:Product)-[:IN_CATEGORY]->(:Category)
     Properties: Product(name, price, url, sku), Category(name)
     
-    **Indexes Available:**
-    - Fulltext Index: 'product_name_index' on (:Product).name
+    **Indexes:** 'product_name_index' on (:Product).name
 
     **SEARCH RULES (CRITICAL):**
-    1. **Fuzzy Search:** When the user searches for a product name (e.g. "router", "wifi", "camera"), use the fulltext index with the `~` fuzzy operator.
-        Syntax: `CALL db.index.fulltext.queryNodes("product_name_index", "search_term~") YIELD node AS p`
-    2. **Case Insensitivity:** The fulltext index handles case automatically.
-    3. **Return Fields:** Always return `p.name`, `p.price`, and `p.url`.
-    4. **Synonyms:**
-        - "wifi" -> search for "wifi~ OR wi-fi~"
-        - "ups" -> search for "ups~ OR power backup~"
+    1. **Specific Search:** If the user asks for a specific item (e.g. "Router", "Camera"), use fuzzy search:
+       `CALL db.index.fulltext.queryNodes("product_name_index", "term~") YIELD node AS p RETURN p.name, p.price, p.url LIMIT 10`
+    
+    2. **Broad/Reset Search:** If the user asks "What **other** products do you have?", "What **else** do you sell?", or "List **all** products", you MUST ignore previous specific filters.
+       Use a broad match: 
+       `MATCH (p:Product) RETURN p.name, p.price, p.url LIMIT 10`
+    
+    3. **Category Exclusion:** If the user says "Products other than routers":
+       `MATCH (p:Product) WHERE NOT toLower(p.name) CONTAINS 'router' RETURN p.name, p.price, p.url LIMIT 10`
+
+    4. **Return Fields:** Always return `p.name`, `p.price`, and `p.url`.
 
     **Examples:**
+    Q: "Do you have routers?"
+    Cypher: CALL db.index.fulltext.queryNodes("product_name_index", "router~") YIELD node AS p RETURN p.name, p.price, p.url LIMIT 10
 
-    Question: "Do you have any routers?"
-    Cypher: 
-    CALL db.index.fulltext.queryNodes("product_name_index", "router~") YIELD node AS p 
-    RETURN p.name, p.price, p.url LIMIT 10
+    Q: "What else do you sell?" (User wants to see NON-routers now)
+    Cypher: MATCH (p:Product) RETURN p.name, p.price, p.url LIMIT 10
 
-    Question: "price of the alcatel phone"
-    Cypher: 
-    CALL db.index.fulltext.queryNodes("product_name_index", "alcatel~ AND phone~") YIELD node AS p 
-    RETURN p.name, p.price, p.url LIMIT 5
-
-    Question: "Show me wifi devices" (Handles hyphen variation)
-    Cypher: 
-    CALL db.index.fulltext.queryNodes("product_name_index", "wifi~ OR wi-fi~") YIELD node AS p 
-    RETURN p.name, p.price, p.url LIMIT 10
-
-    Question: "{question}"
+    Q: "{question}"
     Cypher Query:
     """
     CYPHER_PROMPT = PromptTemplate(input_variables=["schema", "question"], template=CYPHER_GENERATION_TEMPLATE)
@@ -184,7 +176,6 @@ def run_neo4j_ingestion() -> int:
         processed_count = ingestor.ingest_data(CSV_FILE)
         print(f"Neo4j ingestion complete. Processed {processed_count} rows.")
         
-        # Only try to refresh schema if graph object was successfully created
         if graph:
             print("🔄 Refreshing Graph Schema for LLM...")
             graph.refresh_schema()
@@ -197,11 +188,9 @@ def run_neo4j_ingestion() -> int:
         if ingestor:
             ingestor.close()
 
-# --- NEW FUNCTION FOR CLEAR BUTTON ---
 def run_clear_neo4j() -> str:
     """
     Connects to Neo4j and deletes all data.
-    Used by the Admin Dashboard 'Clear Graph DB' button.
     """
     print("Neo4j Service: Received CLEAR request.")
     ingestor = None
@@ -209,7 +198,6 @@ def run_clear_neo4j() -> str:
         ingestor = Neo4jIngestor(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
         ingestor.clear_database()
         
-        # If the graph object exists, refresh schema (it will now be empty)
         if graph:
              graph.refresh_schema()
              
