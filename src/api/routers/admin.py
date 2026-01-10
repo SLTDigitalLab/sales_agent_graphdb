@@ -6,6 +6,11 @@ from src.api.services.scraper_runner import run_general_scraping, run_product_sc
 from src.api.services import db_service, neo4j_service
 from ..auth import get_current_user
 
+# IMPORT LOGGER
+from src.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_user)])
 
 class ConfigUpdate(BaseModel):
@@ -48,16 +53,20 @@ async def get_config():
 @router.post("/config")
 async def update_config(update: ConfigUpdate):
     """Update scraping configuration."""
-    config = load_config()
-    update_data = update.dict(exclude_none=True)
-    
-    # Merge updates into existing config
-    for key, value in update_data.items():
-        config[key] = value
+    logger.info("Received request to update scraper configuration.")
+    try:
+        config = load_config()
+        update_data = update.dict(exclude_none=True)
         
-    if save_config(config):
+        # Merge updates into existing config
+        for key, value in update_data.items():
+            config[key] = value
+            
+        save_config(config)
         return {"message": "Configuration updated successfully", "config": config}
-    raise HTTPException(status_code=500, detail="Failed to save configuration")
+    except Exception as e:
+        logger.error(f"Failed to save configuration: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save configuration")
 
 # --- SCRAPER ACTIONS ---
 
@@ -67,6 +76,7 @@ async def trigger_scraper():
     Trigger General Scraping (Website List + Social Media).
     This does NOT run the heavy product scraper.
     """
+    logger.info("Admin triggered General Scraping.")
     try:
         results = run_general_scraping()
         return {
@@ -74,6 +84,7 @@ async def trigger_scraper():
             "results": results
         }
     except Exception as e:
+        logger.error(f"General scraping failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"General scraping failed: {str(e)}")
 
 @router.post("/scrape-products")
@@ -82,6 +93,7 @@ async def scrape_products():
     Trigger Product Scraping (Selenium).
     This saves to CSV but does NOT ingest to DB.
     """
+    logger.info("Admin triggered Product Scraping.")
     try:
         results = run_product_scraping()
         return {
@@ -89,6 +101,7 @@ async def scrape_products():
             "results": results
         }
     except Exception as e:
+        logger.error(f"Product scraping failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Product scraping failed: {str(e)}")
 
 # --- DATABASE ACTIONS ---
@@ -96,7 +109,7 @@ async def scrape_products():
 @router.post("/ingest-neo4j")
 async def ingest_neo4j_data():
     """Ingest the scraped products.csv into Neo4j."""
-    print("--- Admin API: Received request to ingest Neo4j data ---")
+    logger.info("--- Admin API: Received request to ingest Neo4j data ---")
     try:
         count = neo4j_service.run_neo4j_ingestion()
         return {
@@ -104,13 +117,13 @@ async def ingest_neo4j_data():
             "processed_count": count
         }
     except Exception as e:
-        print(f"Error during Neo4j ingestion: {e}")
+        logger.error(f"Error during Neo4j ingestion: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/ingest-chroma")
 async def ingest_chroma_data():
     """Ingest website/social data into ChromaDB (Vector DB)."""
-    print("--- Admin API: Received request to ingest ChromaDB data ---")
+    logger.info("--- Admin API: Received request to ingest ChromaDB data ---")
     try:
         items_added = db_service.run_chroma_ingestion()
         return {
@@ -118,7 +131,7 @@ async def ingest_chroma_data():
             "items_added": items_added
         }
     except Exception as e:
-        print(f"Error during ChromaDB ingestion: {e}")
+        logger.error(f"Error during ChromaDB ingestion: {e}", exc_info=True)
         return {
             "message": f"ChromaDB ingestion failed: {str(e)}",
             "error": str(e),
@@ -128,7 +141,7 @@ async def ingest_chroma_data():
 @router.delete("/clear-chroma")
 async def clear_chroma_data():
     """Clear all data from ChromaDB."""
-    print("--- Admin API: Received request to clear ChromaDB ---")
+    logger.info("--- Admin API: Received request to clear ChromaDB ---")
     try:
         message = db_service.run_clear_chroma()
         return {
@@ -136,7 +149,7 @@ async def clear_chroma_data():
             "items_added": 0
         }
     except Exception as e:
-        print(f"Error clearing ChromaDB: {e}")
+        logger.error(f"Error clearing ChromaDB: {e}", exc_info=True)
         return {
             "message": f"ChromaDB clearing failed: {str(e)}",
             "error": str(e),
@@ -146,14 +159,13 @@ async def clear_chroma_data():
 @router.delete("/clear-neo4j")
 async def clear_neo4j_data():
     """Clear all nodes and relationships from Neo4j."""
-    print("--- Admin API: Received request to clear Neo4j ---")
+    logger.info("--- Admin API: Received request to clear Neo4j ---")
     try:
-        # We need to make sure this function exists in your service file (Step 2)
         message = neo4j_service.run_clear_neo4j() 
         return {
             "message": message,
             "status": "success"
         }
     except Exception as e:
-        print(f"Error clearing Neo4j: {e}")
+        logger.error(f"Error clearing Neo4j: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
