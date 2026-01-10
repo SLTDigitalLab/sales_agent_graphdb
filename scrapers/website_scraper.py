@@ -9,6 +9,15 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup 
 
+# IMPORT LOGGER
+try:
+    from src.utils.logging_config import get_logger
+    logger = get_logger(__name__)
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
 class WebsiteScraper:
     def __init__(self, urls: Union[str, List[str]]):
         if isinstance(urls, str):
@@ -57,7 +66,7 @@ class WebsiteScraper:
         return clean_text
 
     def scrape(self):
-        print(f"🚀 Starting General Website Scraper (Selenium + Soup)...")
+        logger.info("Starting General Website Scraper (Selenium + Soup)...")
         driver = self.setup_driver()
         all_data = []
 
@@ -65,7 +74,7 @@ class WebsiteScraper:
             for url in self.urls:
                 if not url: continue
                 
-                print(f"🌐 Visiting: {url}...")
+                logger.info(f"Visiting: {url}...")
                 try:
                     driver.get(url)
                     time.sleep(5) # Wait for JS to load
@@ -77,7 +86,7 @@ class WebsiteScraper:
                     clean_text = self.extract_clean_content(driver.page_source)
                     
                     if len(clean_text) > 100:
-                        print(f"   ✅ Scraped {len(clean_text)} chars (Cleaned)")
+                        logger.info(f"Successfully scraped {len(clean_text)} chars from {url}")
                         all_data.append({
                             "source": "website",
                             "url": url,
@@ -86,15 +95,15 @@ class WebsiteScraper:
                             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
                         })
                     else:
-                        print(f"   ⚠️ Content too short or empty.")
+                        logger.warning(f"Content too short or empty for {url}.")
                         
                 except Exception as e:
-                    print(f"   ❌ Error scraping {url}: {e}")
+                    logger.error(f"Error scraping {url}: {e}", exc_info=True)
 
             with open(self.output_file, 'w', encoding='utf-8') as f:
                 json.dump(all_data, f, indent=2, ensure_ascii=False)
             
-            print(f"\n✅ Website scraping complete. Saved to {self.output_file}")
+            logger.info(f"Website scraping complete. Saved to {self.output_file}")
             return all_data
 
         finally:

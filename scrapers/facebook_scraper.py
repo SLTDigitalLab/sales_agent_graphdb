@@ -4,6 +4,16 @@ import os
 import json
 from datetime import datetime
 
+# IMPORT LOGGER
+try:
+    from src.utils.logging_config import get_logger
+    logger = get_logger(__name__)
+except ImportError:
+    # Fallback for standalone script execution without src path
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
 load_dotenv() 
 
 class FacebookScraper:
@@ -28,7 +38,7 @@ class FacebookScraper:
         self.output_file = os.path.join(self.output_dir, "facebook_data.json")
 
     def scrape(self):
-        print(f"📡 Initializing Apify Client...")
+        logger.info("Initializing Apify Client...")
         client = ApifyClient(self.api_token)
 
         # 1. Define the input for the Apify Actor
@@ -39,7 +49,7 @@ class FacebookScraper:
             "maxCommentsPerPost": self.max_comments,
         }
 
-        print(f"🚀 Starting Apify Actor: {self.APIFY_ACTOR_ID} for {self.page_url} (Max {self.max_posts} posts)...")
+        logger.info(f"Starting Apify Actor: {self.APIFY_ACTOR_ID} for {self.page_url} (Max {self.max_posts} posts)...")
         
         try:
             # 2. Run the Actor and wait for it to finish
@@ -65,22 +75,22 @@ class FacebookScraper:
             with open(self.output_file, "w", encoding="utf-8") as f:
                 json.dump(output, f, ensure_ascii=False, indent=2)
             
-            print(f"✅ Facebook data saved to {self.output_file}. Scraped {len(dataset_items)} posts.")
+            logger.info(f"Facebook data saved to {self.output_file}. Scraped {len(dataset_items)} posts.")
             
             return dataset_items
 
         except Exception as e:
-            print(f"🚨 Error during Apify scraping process: {e}")
+            logger.error(f"Error during Apify scraping process: {e}", exc_info=True)
             return []
 
 if __name__ == "__main__":
-    print("--- Running Facebook Scraper Directly ---")
+    logger.info("--- Running Facebook Scraper Directly ---")
     facebook_page_url = "https://www.facebook.com/SLTMobitel/" 
     
     try:
         scraper = FacebookScraper(facebook_page_url, max_posts=5, max_comments_per_post=2)
         scraped_data = scraper.scrape()
     except ValueError as e:
-        print(f"Configuration Error: {e}")
+        logger.error(f"Configuration Error: {e}")
 
-    print("--- Facebook Scraper Finished ---")
+    logger.info("--- Facebook Scraper Finished ---")

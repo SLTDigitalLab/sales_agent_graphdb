@@ -4,6 +4,15 @@ import os
 import json
 from datetime import datetime
 
+# IMPORT LOGGER
+try:
+    from src.utils.logging_config import get_logger
+    logger = get_logger(__name__)
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
 load_dotenv() 
 
 class TikTokScraper:
@@ -42,7 +51,7 @@ class TikTokScraper:
         self.output_file = os.path.join(self.output_dir, "tiktok_data.json")
 
     def scrape(self):
-        print(f"📡 Initializing Apify Client for TikTok scraping...")
+        logger.info("Initializing Apify Client for TikTok scraping...")
         client = ApifyClient(self.api_token)
 
         # Define the input for the apify actor
@@ -60,7 +69,7 @@ class TikTokScraper:
             "shouldDownloadVideos": False            # Don't download videos
         }
 
-        print(f"🚀 Starting Apify Actor: {self.APIFY_ACTOR_ID} for {self.profile_url} (Max {self.max_posts} posts)...")
+        logger.info(f"Starting Apify Actor: {self.APIFY_ACTOR_ID} for {self.profile_url} (Max {self.max_posts} posts)...")
         
         try:
             # Run the Actor and wait for it to finish
@@ -83,22 +92,22 @@ class TikTokScraper:
             with open(self.output_file, "w", encoding="utf-8") as f:
                 json.dump(output, f, ensure_ascii=False, indent=2)
             
-            print(f"✅ TikTok data saved to {self.output_file}. Scraped {len(dataset_items)} posts.")
+            logger.info(f"TikTok data saved to {self.output_file}. Scraped {len(dataset_items)} posts.")
             
             return dataset_items
 
         except Exception as e:
-            print(f"🚨 Error during Apify TikTok scraping process: {e}")
+            logger.error(f"Error during Apify TikTok scraping process: {e}", exc_info=True)
             return []
 
 if __name__ == "__main__":
-    print("--- Running TikTok Scraper Directly ---")
+    logger.info("--- Running TikTok Scraper Directly ---")
     tiktok_profile_url = "https://www.tiktok.com/@sltmobitel"  
     
     try:
         scraper = TikTokScraper(tiktok_profile_url, max_posts=20)  # Limit to 20 posts
         scraped_data = scraper.scrape()
     except ValueError as e:
-        print(f"Configuration Error: {e}")
+        logger.error(f"Configuration Error: {e}")
 
-    print("--- TikTok Scraper Finished ---")
+    logger.info("--- TikTok Scraper Finished ---")

@@ -4,6 +4,15 @@ import os
 import json
 from datetime import datetime
 
+# IMPORT LOGGER
+try:
+    from src.utils.logging_config import get_logger
+    logger = get_logger(__name__)
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
 load_dotenv() 
 
 class LinkedInScraper:
@@ -43,7 +52,7 @@ class LinkedInScraper:
         self.output_file = os.path.join(self.output_dir, "linkedin_data.json")
 
     def scrape(self):
-        print(f"📡 Initializing Apify Client for LinkedIn scraping...")
+        logger.info("Initializing Apify Client for LinkedIn scraping...")
         client = ApifyClient(self.api_token)
 
         run_input = {
@@ -54,7 +63,7 @@ class LinkedInScraper:
             "rawData": False,                    
         }
 
-        print(f"🚀 Starting Apify Actor: {self.APIFY_ACTOR_ID} for {self.company_url} (Max {self.max_posts} posts)...")
+        logger.info(f"Starting Apify Actor: {self.APIFY_ACTOR_ID} for {self.company_url} (Max {self.max_posts} posts)...")
         
         try:
             # Run the Actor and wait for it to finish
@@ -78,22 +87,22 @@ class LinkedInScraper:
             with open(self.output_file, "w", encoding="utf-8") as f:
                 json.dump(output, f, ensure_ascii=False, indent=2)
             
-            print(f"✅ LinkedIn data saved to {self.output_file}. Scraped {len(dataset_items)} posts.")
+            logger.info(f"LinkedIn data saved to {self.output_file}. Scraped {len(dataset_items)} posts.")
             
             return dataset_items
 
         except Exception as e:
-            print(f"🚨 Error during Apify LinkedIn scraping process: {e}")
+            logger.error(f"Error during Apify LinkedIn scraping process: {e}", exc_info=True)
             return []
 
 if __name__ == "__main__":
-    print("--- Running LinkedIn Scraper Directly ---")
+    logger.info("--- Running LinkedIn Scraper Directly ---")
     linkedin_company_url = "https://www.linkedin.com/company/srilankatelecom"  
     
     try:
         scraper = LinkedInScraper(linkedin_company_url, max_posts=20)  # Limit to 20 posts
         scraped_data = scraper.scrape()
     except ValueError as e:
-        print(f"Configuration Error: {e}")
+        logger.error(f"Configuration Error: {e}")
 
-    print("--- LinkedIn Scraper Finished ---")
+    logger.info("--- LinkedIn Scraper Finished ---")

@@ -13,6 +13,15 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 
+# IMPORT LOGGER
+try:
+    from src.utils.logging_config import get_logger
+    logger = get_logger(__name__)
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
 def setup_driver():
     """Setup invisible Chrome browser"""
     chrome_options = Options()
@@ -42,14 +51,14 @@ def discover_categories(driver, base_urls):
 
     for base_url in base_urls:
         if not base_url: continue
-        print(f"🕵️  Discovering categories from {base_url}...")
+        logger.info(f"Discovering categories from {base_url}...")
         
         try:
             driver.get(base_url)
             time.sleep(3) 
 
             elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/categories/')]")
-            print(f"   found {len(elements)} links...")
+            logger.info(f"Found {len(elements)} potential category links on {base_url}")
 
             for elem in elements:
                 try:
@@ -63,7 +72,7 @@ def discover_categories(driver, base_urls):
                 except:
                     continue
         except Exception as e:
-            print(f"   ❌ Error scanning {base_url}: {e}")
+            logger.error(f"Error scanning {base_url}: {e}", exc_info=True)
 
     return list(set(discovered))
 
@@ -149,7 +158,7 @@ def save_csv(data):
     return file_path
 
 def scrape_catalog(custom_start_urls=None):
-    print("🚀 Starting Production Scraper (Multi-URL Support)...")
+    logger.info("Starting Production Scraper (Multi-URL Support)...")
     driver = setup_driver()
     all_products = []
     visited_urls = set()
@@ -161,38 +170,45 @@ def scrape_catalog(custom_start_urls=None):
         
         if not categories:
             if custom_start_urls:
-                 print("⚠️ No sub-categories found. Treating provided URLs as direct category pages.")
+                 logger.warning("No sub-categories found. Treating provided URLs as direct category pages.")
                  categories = [(url, "Custom Category") for url in custom_start_urls]
             else:
-                print("⚠️ Auto-discovery failed. Using fallback.")
-                categories = [("https://www.lifestore.lk/categories/offers", "Offers")]
+                 logger.warning("Auto-discovery failed. Using fallback.")
+                 categories = [("https://www.lifestore.lk/categories/offers", "Offers")]
 
         product_tasks = []
-        print(f"\n📡 Scanning {len(categories)} categories...")
+        logger.info(f"Scanning {len(categories)} categories for product links...")
         
         for i, (url, cat_name) in enumerate(categories):
-            print(f"   [{i+1}/{len(categories)}] {cat_name}...", end="\r")
+            # Log every 5 categories to avoid spam
+            if i % 5 == 0:
+                logger.info(f"Scanning category [{i+1}/{len(categories)}]: {cat_name}")
+            
             links = get_product_links(driver, url)
             for link in links:
                 if link not in visited_urls:
                     visited_urls.add(link)
                     product_tasks.append((link, cat_name))
 
-        print(f"\n📦 Found {len(product_tasks)} unique products.")
+        logger.info(f"Found {len(product_tasks)} unique products to scrape.")
         
         for i, (link, cat_name) in enumerate(product_tasks):
-            print(f"[{i+1}/{len(product_tasks)}] Scraping...", end="\r")
+            # Log progress every 10 items instead of using \r
+            if i % 10 == 0:
+                logger.info(f"Scraping progress: [{i+1}/{len(product_tasks)}]")
+                
             data = extract_details(driver, link, cat_name)
             if data:
                 all_products.append(data)
+                # Auto-save every 10 items
                 if i % 10 == 0: save_csv(all_products) 
 
         save_csv(all_products)
-        print(f"\n✅ DONE! Saved {len(all_products)} products.")
+        logger.info(f"Scraping DONE! Saved {len(all_products)} products to CSV.")
         return all_products
 
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        logger.error(f"Critical Error in Product Scraper: {e}", exc_info=True)
         return []
     finally:
         driver.quit()
