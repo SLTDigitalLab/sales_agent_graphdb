@@ -8,6 +8,11 @@ from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langgraph.graph import StateGraph, END
 import httpx 
 
+# IMPORT LOGGER
+from src.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
@@ -24,7 +29,7 @@ class AgentState(TypedDict):
     intermediate_steps: list 
     route: str 
 
-print("Initial setup complete. AgentState defined.")
+logger.info("Initial setup complete. AgentState defined.")
 
 # --- Query Rewriter ---
 REWRITE_PROMPT_TEMPLATE = """
@@ -51,7 +56,7 @@ def rewrite_query(state: AgentState) -> AgentState:
     """
     Rewrites the user's question to be standalone based on chat history.
     """
-    print("---NODE: rewrite_query---", flush=True)
+    logger.info("---NODE: rewrite_query---")
     question = state["question"]
     chat_history = state.get("chat_history", [])
 
@@ -64,16 +69,16 @@ def rewrite_query(state: AgentState) -> AgentState:
     
     try:
         better_question = rewrite_chain.invoke({"chat_history": history_str, "question": question})
-        print(f"Rewrote query: '{question}' -> '{better_question}'")
+        logger.info(f"Rewrote query: '{question}' -> '{better_question}'")
         return {"question": better_question, "original_question": question}
     except Exception as e:
-        print(f"Error rewriting query: {e}")
+        logger.error(f"Error rewriting query: {e}", exc_info=True)
         return {"original_question": question}
 
 # --- NODES ---
 
 def query_graph_db(state: AgentState) -> AgentState:
-    print("---NODE: query_graph_db (calling API)---", flush=True)
+    logger.info("---NODE: query_graph_db (calling API)---")
     question = state["question"]
     intermediate_steps = state.get("intermediate_steps", []) 
 
@@ -96,13 +101,13 @@ def query_graph_db(state: AgentState) -> AgentState:
             intermediate_steps.append({"tool": "neo4j_qa", "result": result_text, "no_results": True})
 
     except Exception as e:
-        print(f"Error querying Neo4j service: {e}")
+        logger.error(f"Error querying Neo4j service: {e}", exc_info=True)
         intermediate_steps.append({"tool": "neo4j_qa", "error": str(e)})
 
     return {"intermediate_steps": intermediate_steps}
 
 def query_vector_db(state: AgentState) -> AgentState:
-    print("---NODE: query_vector_db (calling API)---", flush=True)
+    logger.info("---NODE: query_vector_db (calling API)---")
     question = state["question"]
     intermediate_steps = state.get("intermediate_steps", [])
 
@@ -116,14 +121,14 @@ def query_vector_db(state: AgentState) -> AgentState:
         retrieved_docs_str = response.json().get("result", "No relevant information found.")
         
         if not retrieved_docs_str or "No relevant information" in retrieved_docs_str:
-             print("Vector DB API returned no documents.")
+             logger.info("Vector DB API returned no documents.")
              intermediate_steps.append({"tool": "vector_db", "result": "No relevant information found in the vector database."})
         else:
-             print(f"Vector DB API retrieved: {retrieved_docs_str[:200]}...")
+             logger.info(f"Vector DB API retrieved: {retrieved_docs_str[:200]}...")
              intermediate_steps.append({"tool": "vector_db", "result": retrieved_docs_str})
 
     except Exception as e:
-        print(f"Error querying Vector DB service: {e}")
+        logger.error(f"Error querying Vector DB service: {e}", exc_info=True)
         intermediate_steps.append({"tool": "vector_db", "error": str(e)})
 
     return {"intermediate_steps": intermediate_steps}
@@ -147,7 +152,7 @@ extraction_prompt = ChatPromptTemplate.from_template(EXTRACTION_PROMPT)
 extraction_chain = extraction_prompt | llm | StrOutputParser()
 
 def prepare_order_form_response(state: AgentState) -> AgentState:
-    print("---NODE: prepare_order_form_response---", flush=True)
+    logger.info("---NODE: prepare_order_form_response---")
     question = state["question"]
     chat_history = state.get("chat_history", [])
 
@@ -158,7 +163,7 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
         product_context = product_context.replace('"', '').replace("'", "")
         if "None" in product_context: product_context = ""
     except Exception as e:
-        print(f"Error extracting product context: {e}")
+        logger.error(f"Error extracting product context: {e}", exc_info=True)
         product_context = ""
 
     initial_message = "It sounds like you'd like to place an order. I can help you with that. Please fill out the form below."
@@ -212,13 +217,13 @@ router_prompt = ChatPromptTemplate.from_template(ROUTER_PROMPT_TEMPLATE)
 router_chain = router_prompt | llm | JsonOutputParser()
 
 def route_query(state: AgentState) -> AgentState:
-    print("---NODE: route_query---", flush=True)
+    logger.info("---NODE: route_query---")
     question = state["question"]
     state["intermediate_steps"] = []
 
     response_json = router_chain.invoke({"question": question})
     route_decision = response_json.get("route", "vector_db")
-    print(f"Routing decision: {route_decision}, (Reason: {response_json.get('reasoning', 'N/A')})")
+    logger.info(f"Routing decision: {route_decision}, (Reason: {response_json.get('reasoning', 'N/A')})")
 
     if route_decision == "graph_db": return {"route": "neo4j", "intermediate_steps": []}
     elif route_decision == "vector_db": return {"route": "vector", "intermediate_steps": []}
@@ -263,7 +268,7 @@ synthesis_prompt = ChatPromptTemplate.from_template(SYNTHESIS_PROMPT_TEMPLATE)
 synthesis_chain = synthesis_prompt | llm | StrOutputParser()
 
 def generate_response(state: AgentState) -> AgentState:
-    print("---NODE: generate_response---", flush=True)
+    logger.info("---NODE: generate_response---")
     question = state["question"]
     intermediate_steps = state.get("intermediate_steps", [])
     chat_history = state.get("chat_history", [])
@@ -277,12 +282,12 @@ def generate_response(state: AgentState) -> AgentState:
         conversation_result = general_chain.invoke({"chat_history": history_str, "question": question})
         
         if "SEARCH_REQUIRED" not in conversation_result:
-            print("Handled as pure conversation (Memory used).")
+            logger.info("Handled as pure conversation (Memory used).")
             response = conversation_result
             updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=response)]
             return {"generation": response, "chat_history": updated_history}
         else:
-            print("General query requires external info. Falling back to ChromaDB...")
+            logger.info("General query requires external info. Falling back to ChromaDB...")
 
     # --- FALLBACK / DB LOGIC ---
     if original_route == "general" and not intermediate_steps:
@@ -292,11 +297,11 @@ def generate_response(state: AgentState) -> AgentState:
             chroma_result = resp.json().get("result", "No relevant info")
             intermediate_steps.append({"tool": "vector_db_general", "result": chroma_result})
         except Exception as e:
-            print(f"Error in general fallback: {e}")
+            logger.error(f"Error in general fallback: {e}", exc_info=True)
 
     neo4j_no_results = any(step.get("tool") == "neo4j_qa" and step.get("no_results") for step in intermediate_steps)
     if neo4j_no_results:
-        print("Neo4j empty, trying Chroma fallback...")
+        logger.info("Neo4j empty, trying Chroma fallback...")
         try:
             resp = httpx.post(f"{API_BASE_URL}/db/vector/search", json={"question": question}, timeout=60.0)
             chroma_result = resp.json().get("result", "No relevant info")
@@ -318,7 +323,7 @@ def generate_response(state: AgentState) -> AgentState:
     order_signal = next((step for step in intermediate_steps if isinstance(step, dict) and step.get("type") == "order_form"), None)
     
     if order_signal:
-        print("Appending forced Order Form signal to response.")
+        logger.info("Appending forced Order Form signal to response.")
         req_id = order_signal.get("request_id", "req_000")
         prefill = order_signal.get("prefill_product", "")
         
@@ -327,7 +332,7 @@ def generate_response(state: AgentState) -> AgentState:
         else:
             final_answer += f"\n\n[SHOW_ORDER_FORM:{req_id}]"
 
-    print(f"Generated final answer: {final_answer}")
+    logger.info(f"Generated final answer: {final_answer}")
     updated_history = chat_history + [HumanMessage(content=final_input_question), AIMessage(content=final_answer)]
     return {"generation": final_answer, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
 
@@ -349,7 +354,7 @@ workflow.set_entry_point("rewrite")
 workflow.add_edge("rewrite", "router") 
 
 def decide_next_node(state: AgentState):
-    print(f"---DECISION: Based on route '{state['route']}'---", flush=True)
+    logger.info(f"---DECISION: Based on route '{state['route']}'---")
     if state['route'] == "neo4j": return "query_neo4j"
     elif state['route'] == "vector": return "query_vector"
     elif state['route'] == "order_form": return "prepare_order" 
@@ -374,4 +379,4 @@ workflow.add_edge("prepare_order", "generate")
 workflow.add_edge("generate", END)
 
 app = workflow.compile()
-print("Graph compiled successfully!")
+logger.info("Graph compiled successfully!")

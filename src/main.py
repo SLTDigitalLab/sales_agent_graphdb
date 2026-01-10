@@ -3,15 +3,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
 import os
 from dotenv import load_dotenv 
+
+# SETUP LOGGING
+from .utils.logging_config import setup_logging, get_logger
+
+# Initialize logging configuration immediately
+setup_logging()
+logger = get_logger(__name__)
+
 load_dotenv()
 from .api import auth
-
 from .api.services.chat_service import chat_histories 
 
 # Importing Routers
 from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin, email, neo4j_products
 
-print("FastAPI application initialized and routers included.")
+logger.info("FastAPI application initialized and routers included.")
 
 # FastAPI Setup and CORS
 api = FastAPI(
@@ -32,6 +39,9 @@ else:
         "http://localhost:3000", 
     ]
 
+# Log the allowed origins for debugging
+logger.info(f"CORS Allowed Origins: {ALLOWED_ORIGINS}")
+
 api.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS, 
@@ -50,4 +60,4 @@ api.include_router(email.router)
 api.include_router(neo4j_products.router)
 api.include_router(auth.router)
 
-print("FastAPI application initialized and routers included.")
+logger.info("FastAPI startup complete. All routers registered.")

@@ -10,11 +10,16 @@ from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import chromadb 
 
+# IMPORT LOGGER
+from src.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Initialize ChromaDB connection
-print("Connecting to persistent ChromaDB...")
+logger.info("Connecting to persistent ChromaDB...")
 script_dir = os.path.dirname(__file__)
 project_root = os.path.join(script_dir, '..', '..', '..')
 CHROMA_PERSIST_DIR = os.path.join(project_root, 'chroma_data')
@@ -32,7 +37,7 @@ retriever = vector_store.as_retriever(
     search_type="similarity",
     search_kwargs={"k": 5} 
 )
-print("ChromaDB vector store and retriever initialized for service.")
+logger.info("ChromaDB vector store and retriever initialized for service.")
 
 # TEXT SPLITTER
 # Used for ALL data sources to ensure consistent chunking
@@ -71,13 +76,13 @@ class DocumentResult(BaseModel):
 # Ingestion logic
 def load_json_data(file_path):
     if not os.path.exists(file_path):
-        print(f"File not found: {file_path}")
+        logger.error(f"File not found: {file_path}")
         return []
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError:
-        print(f"Error: Could not decode JSON from {file_path}. File might be empty or corrupt.")
+        logger.error(f"Error: Could not decode JSON from {file_path}. File might be empty or corrupt.")
         return []
 
 def ingest_data(data_list, source):
@@ -86,10 +91,10 @@ def ingest_data(data_list, source):
     and adds them to the vector store.
     """
     if not data_list:
-        print(f"No data found for {source}. Skipping.")
+        logger.warning(f"No data found for {source}. Skipping.")
         return 0
 
-    print(f"Preparing {source} data...")
+    logger.info(f"Preparing {source} data...")
 
     documents_to_process: List[Document] = [] 
     
@@ -151,15 +156,15 @@ def ingest_data(data_list, source):
 
     # 3. SPLIT ALL DOCUMENTS (Website AND Social)
     if documents_to_process:
-        print(f"Splitting {len(documents_to_process)} raw {source} items...")
+        logger.info(f"Splitting {len(documents_to_process)} raw {source} items...")
         split_docs = text_splitter.split_documents(documents_to_process)
         
-        print(f"Ingesting {len(split_docs)} split chunks ({source}) into ChromaDB...")
+        logger.info(f"Ingesting {len(split_docs)} split chunks ({source}) into ChromaDB...")
         vector_store.add_documents(documents=split_docs)
-        print(f"{source} data successfully stored!")
+        logger.info(f"{source} data successfully stored!")
         return len(split_docs)
     else:
-        print(f"No valid documents found to ingest for {source}.")
+        logger.warning(f"No valid documents found to ingest for {source}.")
         return 0
 
 # Service functions
@@ -167,9 +172,9 @@ async def get_raw_chunks(query: str, k: int = 5) -> List[DocumentResult]:
     """
     Executes the synchronous retrieval method in a separate thread.
     """
-    print(f"Chroma Service: Received query: {query}")
+    logger.info(f"Chroma Service: Received query: {query}")
     if not retriever:
-        print("Retriever not available.")
+        logger.error("Retriever not available.")
         return []
     
     docs: List[Document] = await asyncio.to_thread(
@@ -191,9 +196,9 @@ async def get_formatted_chunks(query: str, k: int = 5) -> str:
     """
     Gets relevant documents, removes duplicates based on content, and formats them into a single string.
     """
-    print(f"Chroma Service: Received formatted query: {query}")
+    logger.info(f"Chroma Service: Received formatted query: {query}")
     if not retriever:
-        print("Retriever not available.")
+        logger.error("Retriever not available.")
         return "Vector store retriever is not initialized."
     
     docs: List[Document] = await asyncio.to_thread(
@@ -203,6 +208,7 @@ async def get_formatted_chunks(query: str, k: int = 5) -> str:
     )
     
     if not docs:
+        logger.info("No relevant information found in the vector database.")
         return "No relevant information found in the vector database."
     
     # Deduplication logic
@@ -221,22 +227,22 @@ def run_chroma_ingestion() -> int:
     """
     Loads all specified data files and ingests them into ChromaDB.
     """
-    print("--- Chroma Service: Running Full Data Ingestion ---")
+    logger.info("--- Chroma Service: Running Full Data Ingestion ---")
     
     website_json_path = os.path.join(DATA_DIR, "website_data.json")
-    print(f"Loading website data from: {website_json_path}")
+    logger.info(f"Loading website data from: {website_json_path}")
     website_json = load_json_data(website_json_path)
     
     linkedin_json_path = os.path.join(DATA_DIR, "linkedin_data.json")
-    print(f"Loading linkedin data from: {linkedin_json_path}")
+    logger.info(f"Loading linkedin data from: {linkedin_json_path}")
     linkedin_json = load_json_data(linkedin_json_path)
 
     facebook_json_path = os.path.join(DATA_DIR, "facebook_data.json")
-    print(f"Loading facebook data from: {facebook_json_path}")
+    logger.info(f"Loading facebook data from: {facebook_json_path}")
     facebook_json = load_json_data(facebook_json_path)
 
     tiktok_json_path = os.path.join(DATA_DIR, "tiktok_data.json")
-    print(f"Loading tiktok data from: {tiktok_json_path}")
+    logger.info(f"Loading tiktok data from: {tiktok_json_path}")
     tiktok_json = load_json_data(tiktok_json_path)
 
     website_data = website_json.get("data", []) if isinstance(website_json, dict) else website_json
@@ -254,18 +260,18 @@ def run_chroma_ingestion() -> int:
 
     try:
         count_result = vector_store._collection.count()
-        print(f"\n--- Ingestion Complete ---")
-        print(f"Total items in ChromaDB: {count_result}")
+        logger.info(f"\n--- Ingestion Complete ---")
+        logger.info(f"Total items in ChromaDB: {count_result}")
         return count_result
     except Exception as e:
-        print(f"Error counting items in collection: {e}")
+        logger.error(f"Error counting items in collection: {e}")
         return total_added
 
 def run_clear_chroma():
     """
     Deletes all data from the 'enterprise_data' collection.
     """
-    print("--- Chroma Service: Clearing 'enterprise_data' collection ---")
+    logger.info("--- Chroma Service: Clearing 'enterprise_data' collection ---")
     try:
         temp_vector_store = Chroma(
             collection_name="enterprise_data",
@@ -273,7 +279,7 @@ def run_clear_chroma():
             persist_directory=CHROMA_PERSIST_DIR
         )
         temp_vector_store.delete_collection()
-        print("Collection deleted.")
+        logger.info("Collection deleted.")
         
         global vector_store, retriever
         vector_store = Chroma(
@@ -286,10 +292,10 @@ def run_clear_chroma():
             search_kwargs={"k": 5} 
         )
         
-        print("Collection re-created with new instance.")
+        logger.info("Collection re-created with new instance.")
         return "Collection 'enterprise_data' cleared and re-created successfully."
     except Exception as e:
-        print(f"Error clearing collection: {e}")
+        logger.error(f"Error clearing collection: {e}")
         raise e            
 
-print("ChromaDB Service file loaded.")
+logger.info("ChromaDB Service file loaded.")

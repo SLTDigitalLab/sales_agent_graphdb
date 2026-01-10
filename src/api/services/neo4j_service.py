@@ -6,6 +6,11 @@ from langchain_neo4j import Neo4jGraph, GraphCypherQAChain
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 
+# IMPORT LOGGER
+from src.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 load_dotenv()
 NEO4J_URI = os.getenv("NEO4J_URI")
 NEO4J_USER = os.getenv("NEO4J_USER")
@@ -25,7 +30,7 @@ neo4j_available = False
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 try:
-    print(f"Attempting to connect to Neo4j at {NEO4J_URI}...")
+    logger.info(f"Attempting to connect to Neo4j at {NEO4J_URI}...")
     
     graph = Neo4jGraph(
         url=NEO4J_URI,
@@ -33,7 +38,7 @@ try:
         password=NEO4J_PASSWORD
     )
     graph.refresh_schema()
-    print("Neo4j schema refreshed for service.")
+    logger.info("Neo4j schema refreshed for service.")
     
     # --- 1. QA PROMPT ---
     QA_TEMPLATE_TEXT = """
@@ -97,12 +102,12 @@ try:
         qa_prompt=QA_PROMPT,
         cypher_prompt=CYPHER_PROMPT
     )
-    print("Neo4j QA Chain service initialized.")
+    logger.info("Neo4j QA Chain service initialized.")
     neo4j_available = True
 
 except Exception as e:
-    print(f"⚠️ WARNING: Neo4j connection failed. The app will run without Graph features.")
-    print(f"Error details: {e}")
+    logger.warning(f"Neo4j connection failed. The app will run without Graph features.")
+    logger.error(f"Error details: {e}", exc_info=True)
     neo4j_available = False
 
 class Neo4jIngestor:
@@ -118,7 +123,7 @@ class Neo4jIngestor:
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Category) REQUIRE c.name IS UNIQUE")
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (p:Product) REQUIRE p.sku IS UNIQUE")
             
-            print("Creating Fulltext Search Index on Product Names...")
+            logger.info("Creating Fulltext Search Index on Product Names...")
             session.run("CREATE FULLTEXT INDEX product_name_index IF NOT EXISTS FOR (p:Product) ON EACH [p.name]")
 
     def clear_database(self):
@@ -137,7 +142,7 @@ class Neo4jIngestor:
         """
         count = 0
         with self.driver.session(database="neo4j") as session:
-            print(f"Reading from: {csv_file_path}") 
+            logger.info(f"Reading from: {csv_file_path}") 
             with open(csv_file_path, 'r', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
@@ -153,35 +158,36 @@ def run_graph_query(question: str) -> str:
         result = neo4j_qa_chain.invoke({"query": question})
         return result.get('result', "Error: No result found.")
     except Exception as e:
+        logger.error(f"Error running graph query: {e}", exc_info=True)
         return f"Error: {str(e)}"
 
 def run_neo4j_ingestion() -> int:
     """Clears and re-loads the Neo4j database."""
-    print("Neo4j Service: Received ingestion request.")
+    logger.info("Neo4j Service: Received ingestion request.")
     
     ingestor = None
     try:
         ingestor = Neo4jIngestor(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
-        print("Clearing Neo4j database...")
+        logger.info("Clearing Neo4j database...")
         ingestor.clear_database()
         
-        print("Setting up constraints & indexes...")
+        logger.info("Setting up constraints & indexes...")
         ingestor.setup_constraints()
         
-        print(f"Ingesting data from {CSV_FILE}...")
+        logger.info(f"Ingesting data from {CSV_FILE}...")
         if not os.path.exists(CSV_FILE):
-             print(f"❌ Error: CSV file not found at {CSV_FILE}")
+             logger.error(f"CSV file not found at {CSV_FILE}")
              return 0
 
         processed_count = ingestor.ingest_data(CSV_FILE)
-        print(f"Neo4j ingestion complete. Processed {processed_count} rows.")
+        logger.info(f"Neo4j ingestion complete. Processed {processed_count} rows.")
         
         if graph:
-            print("🔄 Refreshing Graph Schema for LLM...")
+            logger.info("Refreshing Graph Schema for LLM...")
             graph.refresh_schema()
-            print("✅ Schema Refreshed!")
+            logger.info("Schema Refreshed!")
         else:
-            print("⚠️ Skipping Schema refresh because 'graph' object is not initialized.")
+            logger.warning("Skipping Schema refresh because 'graph' object is not initialized.")
 
         return processed_count
     finally:
@@ -192,7 +198,7 @@ def run_clear_neo4j() -> str:
     """
     Connects to Neo4j and deletes all data.
     """
-    print("Neo4j Service: Received CLEAR request.")
+    logger.info("Neo4j Service: Received CLEAR request.")
     ingestor = None
     try:
         ingestor = Neo4jIngestor(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
@@ -203,10 +209,10 @@ def run_clear_neo4j() -> str:
              
         return "Graph database cleared successfully."
     except Exception as e:
-        print(f"❌ Error clearing Neo4j: {e}")
+        logger.error(f"Error clearing Neo4j: {e}", exc_info=True)
         raise e
     finally:
         if ingestor:
             ingestor.close()
 
-print("Neo4j Service file loaded.")
+logger.info("Neo4j Service file loaded.")

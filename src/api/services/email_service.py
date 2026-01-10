@@ -6,6 +6,11 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 from typing import Dict, Any
 
+# IMPORT LOGGER
+from src.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 load_dotenv() 
 
 # Retrieve email settings from environment variables
@@ -28,7 +33,7 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
         A dictionary indicating success or failure.
     """
     if not all([SMTP_SERVER, SMTP_PORT, SENDER_EMAIL, SENDER_PASSWORD, TARGET_EMAIL]):
-        print("Email configuration is missing in environment variables.")
+        logger.error("Email configuration is missing in environment variables.")
         return {"status": "error", "message": "Email configuration is missing."}
 
     # Extract items and customer info once to use in both emails
@@ -74,7 +79,7 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
         
         msg_internal.attach(MIMEText(internal_body, 'plain'))
         server.sendmail(SENDER_EMAIL, TARGET_EMAIL, msg_internal.as_string())
-        print(f"Internal order notification sent to {TARGET_EMAIL}")
+        logger.info(f"Internal order notification sent to {TARGET_EMAIL}")
 
         # SEND CUSTOMER CONFIRMATION EMAIL 
         if customer_email and "@" in customer_email:
@@ -99,9 +104,9 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
             
             msg_customer.attach(MIMEText(customer_body, 'plain'))
             server.sendmail(SENDER_EMAIL, customer_email, msg_customer.as_string())
-            print(f"Customer confirmation sent to {customer_email}")
+            logger.info(f"Customer confirmation sent to {customer_email}")
         else:
-            print("Skipping customer email: Invalid or missing email address.")
+            logger.warning("Skipping customer email: Invalid or missing email address.")
 
         # Close connection
         server.quit()
@@ -109,11 +114,11 @@ def send_order_request_email(request_data: Dict[str, Any]) -> Dict[str, str]:
         return {"status": "success", "message": "Order request processed and emails sent."}
 
     except smtplib.SMTPAuthenticationError:
-        print("SMTP Authentication Error: Check your email address and App Password.")
+        logger.error("SMTP Authentication Error: Check your email address and App Password.")
         return {"status": "error", "message": "Authentication failed. Check email settings."}
     except smtplib.SMTPRecipientsRefused:
-        print(f"Recipient address rejected.")
+        logger.error(f"Recipient address refused.")
         return {"status": "error", "message": "Recipient address refused."}
     except Exception as e:
-        print(f"Error sending email: {e}")
+        logger.error(f"Error sending email: {e}", exc_info=True)
         return {"status": "error", "message": f"An error occurred: {str(e)}"}
