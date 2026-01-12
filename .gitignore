@@ -1,11 +1,30 @@
+# --- Global & Environment ---
+.DS_Store
+*.env
+
+# --- Python (Recursive) ---
 venv/
 .venv/
-*.env
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# --- IDE Settings ---
 .vscode/
 .idea/
-data/*.json
-chroma_data/
+
+# --- Backend Specific ---
+# Data folder
+backend/data/*.json
+# The database folder
+backend/chroma_data/
+# The generated products CSV
+#backend/products.csv
+
+# --- Frontend Specific ---
+# Crucial: Ignore node_modules to keep repo light
+frontend/node_modules/
+# Ignore build output
+frontend/dist/
+frontend/build/
