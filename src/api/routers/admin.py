@@ -26,6 +26,9 @@ class ConfigUpdate(BaseModel):
     linkedin_url: Optional[str] = None
     facebook_url: Optional[str] = None
     tiktok_url: Optional[str] = None
+    
+    # Dynamic Email Target
+    target_email: Optional[str] = None 
 
 @router.get("/status")
 async def admin_status():
@@ -155,7 +158,7 @@ async def clear_chroma_data():
             "error": str(e),
             "status": "error"
         }
-
+    
 @router.delete("/clear-neo4j")
 async def clear_neo4j_data():
     """Clear all nodes and relationships from Neo4j."""

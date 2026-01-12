@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Trash2, Save, RefreshCw, Database, Globe, ShoppingBag } from 'lucide-react'; 
+import { Plus, Trash2, Save, RefreshCw, Database, Globe, ShoppingBag, Mail } from 'lucide-react'; 
 
 // Uses the VITE_ variable if it exists (Docker), otherwise falls back to localhost (Local)
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [websiteUrls, setWebsiteUrls] = useState(['']);
   const [productUrls, setProductUrls] = useState(['']);
   const [socials, setSocials] = useState({ linkedin: '', facebook: '', tiktok: '' });
+  const [targetEmail, setTargetEmail] = useState(''); // NEW STATE
   
   // State for Status & Results
   const [statusMsg, setStatusMsg] = useState({ text: '', type: '' });
@@ -51,6 +52,9 @@ export default function Dashboard() {
         facebook: data.facebook_url || '',
         tiktok: data.tiktok_url || ''
       });
+      // Load email setting
+      setTargetEmail(data.target_email || '');
+      
       setStatusMsg({ text: 'Configuration loaded!', type: 'success' });
     }
     setLoadingAction(null);
@@ -63,7 +67,8 @@ export default function Dashboard() {
       product_urls: productUrls.filter(u => u.trim()),
       linkedin_url: socials.linkedin || null,
       facebook_url: socials.facebook || null,
-      tiktok_url: socials.tiktok || null
+      tiktok_url: socials.tiktok || null,
+      target_email: targetEmail || null 
     };
 
     const res = await authFetch('/admin/config', {
@@ -170,7 +175,7 @@ export default function Dashboard() {
         </div>
         
         {/* Socials */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
             <div>
                 <label className="block text-sm font-medium text-gray-700">LinkedIn URL</label>
                 <input className="w-full mt-1 p-2 border rounded" value={socials.linkedin} onChange={(e) => setSocials({...socials, linkedin: e.target.value})} />
@@ -182,6 +187,25 @@ export default function Dashboard() {
             <div>
                 <label className="block text-sm font-medium text-gray-700">TikTok URL</label>
                 <input className="w-full mt-1 p-2 border rounded" value={socials.tiktok} onChange={(e) => setSocials({...socials, tiktok: e.target.value})} />
+            </div>
+        </div>
+
+        {/* Email Settings */}
+        <div className="mb-4 border-t pt-4">
+             <div className="flex items-center gap-2 mb-2 text-gray-800 font-medium">
+                <Mail size={18} className="text-gray-600" />
+                <h3>Email Notification Settings</h3>
+             </div>
+             <div>
+                <label className="block text-sm font-medium text-gray-700">Order Recipient Email</label>
+                <div className="text-xs text-gray-500 mb-1">New orders will be sent to this address (Leave empty to use system default).</div>
+                <input 
+                    type="email" 
+                    className="w-full md:w-1/2 mt-1 p-2 border rounded focus:ring-blue-500 focus:border-blue-500" 
+                    placeholder="sales@example.com"
+                    value={targetEmail} 
+                    onChange={(e) => setTargetEmail(e.target.value)} 
+                />
             </div>
         </div>
 
