@@ -1,21 +1,25 @@
+version: '3.8'
+
 services:
   # Backend (Python API)
   backend:
     image: enterprise-agent-backend
     container_name: agent_backend
-    build: .
+    build: 
+      context: ./backend 
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - ./backend/.env    
     environment:
       - CHROMA_PERSIST_DIR=/app/chroma_data
       - DATA_DIR=/app/data
       - PYTHONUNBUFFERED=1
     volumes:
-      - ./chroma_data:/app/chroma_data
-      - ./data:/app/data
-      - ./src:/app/src 
+      - ./backend:/app
+      - /app/venv
+      - /app/__pycache__
     command: uvicorn src.main:api --host 0.0.0.0 --port 8000 --reload 
     restart: always
 
@@ -29,7 +33,7 @@ services:
     
     # Map Local Port 3000
     ports:
-      - "3000:5173"  
+      - "3000:5173"   
       
     volumes:
       - ./frontend:/app       
@@ -39,7 +43,6 @@ services:
     
     environment:
       - VITE_API_URL=http://localhost:8000 
-      # - VITE_API_URL=http://backend:8000 # For Server-Side Rendering
       
     depends_on:
       - backend      
