@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional, List, Union
 from src.api.services.config_manager import load_config, save_config
 from src.api.services.scraper_runner import run_general_scraping, run_product_scraping
@@ -30,6 +30,13 @@ class ConfigUpdate(BaseModel):
     # Dynamic Email Target
     target_email: Optional[str] = None 
 
+    # Validator to check for '@' symbol
+    @validator('target_email')
+    def validate_email_format(cls, v):
+        if v is not None and "@" not in v:
+            raise ValueError('Invalid email format. Address must contain "@".')
+        return v
+
 @router.get("/status")
 async def admin_status():
     """Check if admin system is operational."""
@@ -59,7 +66,8 @@ async def update_config(update: ConfigUpdate):
     logger.info("Received request to update scraper configuration.")
     try:
         config = load_config()
-        update_data = update.dict(exclude_none=True)
+        
+        update_data = update.dict(exclude_unset=True)
         
         # Merge updates into existing config
         for key, value in update_data.items():

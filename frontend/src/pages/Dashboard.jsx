@@ -12,7 +12,7 @@ export default function Dashboard() {
   const [websiteUrls, setWebsiteUrls] = useState(['']);
   const [productUrls, setProductUrls] = useState(['']);
   const [socials, setSocials] = useState({ linkedin: '', facebook: '', tiktok: '' });
-  const [targetEmail, setTargetEmail] = useState(''); // NEW STATE
+  const [targetEmail, setTargetEmail] = useState(''); 
   
   // State for Status & Results
   const [statusMsg, setStatusMsg] = useState({ text: '', type: '' });
