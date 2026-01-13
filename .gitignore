@@ -20,7 +20,7 @@ backend/data/*.json
 # The database folder
 backend/chroma_data/
 # The generated products CSV
-#backend/products.csv
+backend/products.csv
 
 # --- Frontend Specific ---
 # Crucial: Ignore node_modules to keep repo light
