@@ -202,7 +202,7 @@ export default function Dashboard() {
                 <input 
                     type="email" 
                     className="w-full md:w-1/2 mt-1 p-2 border rounded focus:ring-blue-500 focus:border-blue-500" 
-                    placeholder="sales@example.com"
+                    placeholder="enterprise.agent.orders@gmail.com"
                     value={targetEmail} 
                     onChange={(e) => setTargetEmail(e.target.value)} 
                 />
