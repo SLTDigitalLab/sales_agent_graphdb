@@ -1,6 +1,7 @@
 # --- Global & Environment ---
 .DS_Store
 *.env
+*.log
 
 # --- Python (Recursive) ---
 venv/
@@ -17,14 +18,25 @@ __pycache__/
 # --- Backend Specific ---
 # Data folder
 backend/data/*.json
-# The database folder
+# The database folder (Chroma Vector DB)
 backend/chroma_data/
 # The generated products CSV
 backend/products.csv
+# Scraper cache (if any)
+.wdm/
+
+# --- Database Volumes ---
+backend/postgres_data/
+backend/pgdata/
+backend/neo4j_data/
+*.sqlite3
 
 # --- Frontend Specific ---
-# Crucial: Ignore node_modules to keep repo light
 frontend/node_modules/
 # Ignore build output
 frontend/dist/
 frontend/build/
+# Frontend logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*

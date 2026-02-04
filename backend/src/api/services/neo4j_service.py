@@ -9,6 +9,10 @@ from langchain_core.prompts import PromptTemplate
 # IMPORT LOGGER
 from src.utils.logging_config import get_logger
 
+# IMPORT DATABASE
+from src.api.db.sessions import SessionLocal
+from src.api.db.models import Product
+
 logger = get_logger(__name__)
 
 load_dotenv()
@@ -16,10 +20,6 @@ NEO4J_URI = os.getenv("NEO4J_URI")
 NEO4J_USER = os.getenv("NEO4J_USER")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.join(script_dir, '..', '..', '..') 
-CSV_FILE = os.path.join(PROJECT_ROOT, 'products.csv')
 
 # Initialize variables GLOBALLY first 
 graph = None
@@ -119,7 +119,6 @@ class Neo4jIngestor:
     
     def setup_constraints(self):
         with self.driver.session(database="neo4j") as session:
-            # 1. Unique Constraints
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Category) REQUIRE c.name IS UNIQUE")
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (p:Product) REQUIRE p.sku IS UNIQUE")
             
@@ -130,24 +129,45 @@ class Neo4jIngestor:
         with self.driver.session(database="neo4j") as session:
             session.run("MATCH (n) DETACH DELETE n")
             
-    def ingest_data(self, csv_file_path):
+    def ingest_data(self):
         ingest_query = """
-        MERGE (c:Category {name: $row.category_name})
-        MERGE (p:Product {sku: $row.sku})
+        MERGE (c:Category {name: $category})
+        MERGE (p:Product {sku: $sku})
         ON CREATE SET 
-            p.name = $row.product_name, 
-            p.price = toFloat($row.price),
-            p.url = $row.url
+            p.name = $name, 
+            p.price = toFloat($price),
+            p.url = $url
         MERGE (p)-[:IN_CATEGORY]->(c)
         """
         count = 0
-        with self.driver.session(database="neo4j") as session:
-            logger.info(f"Reading from: {csv_file_path}") 
-            with open(csv_file_path, 'r', encoding='utf-8') as file:
-                reader = csv.DictReader(file)
-                for row in reader:
-                    session.run(ingest_query, row=row)
+        
+        # 1. Fetch data from SQL Database
+        db = SessionLocal()
+        try:
+            products = db.query(Product).all()
+            logger.info(f"Fetched {len(products)} products from SQL Database for Neo4j Sync.")
+
+            with self.driver.session(database="neo4j") as session:
+                for product in products:
+                    # Handle missing category
+                    cat_name = product.category if product.category else "Uncategorized"
+                    
+                    params = {
+                        "category": cat_name,
+                        "sku": product.sku,
+                        "name": product.name,
+                        "price": float(product.price),
+                        "url": product.product_url or ""
+                    }
+                    
+                    session.run(ingest_query, **params)
                     count += 1
+        except Exception as e:
+            logger.error(f"Error reading from SQL DB: {e}")
+            raise e
+        finally:
+            db.close()
+            
         return count
 
 def run_graph_query(question: str) -> str:
@@ -162,8 +182,8 @@ def run_graph_query(question: str) -> str:
         return f"Error: {str(e)}"
 
 def run_neo4j_ingestion() -> int:
-    """Clears and re-loads the Neo4j database."""
-    logger.info("Neo4j Service: Received ingestion request.")
+    """Clears and re-loads the Neo4j database from SQL Source of Truth."""
+    logger.info("Neo4j Service: Received ingestion request (SQL -> Graph).")
     
     ingestor = None
     try:
@@ -174,13 +194,10 @@ def run_neo4j_ingestion() -> int:
         logger.info("Setting up constraints & indexes...")
         ingestor.setup_constraints()
         
-        logger.info(f"Ingesting data from {CSV_FILE}...")
-        if not os.path.exists(CSV_FILE):
-             logger.error(f"CSV file not found at {CSV_FILE}")
-             return 0
-
-        processed_count = ingestor.ingest_data(CSV_FILE)
-        logger.info(f"Neo4j ingestion complete. Processed {processed_count} rows.")
+        logger.info("Starting ingestion from SQL...")
+        processed_count = ingestor.ingest_data()
+        
+        logger.info(f"Neo4j ingestion complete. Synced {processed_count} products.")
         
         if graph:
             logger.info("Refreshing Graph Schema for LLM...")
