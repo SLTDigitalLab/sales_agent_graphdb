@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from typing import Optional
@@ -10,18 +10,32 @@ from src.utils.logging_config import get_logger
 from ..services import chat_service 
 from .core import QueryRequest, QueryResponse, ClearRequest, ClearResponse
 
+# IMPORT AUTH DEPS
+from src.api.deps import get_optional_user
+from src.api.db.models import Customer
+
 logger = get_logger(__name__)
 
-# Define the router 
 router = APIRouter(prefix="/v1", tags=["Conversational Agent"])
 
 # --- CHAT ENDPOINT: STREAMING ---
 @router.post("/chat/stream")
-async def handle_chat_stream(query: QueryRequest):
+async def handle_chat_stream(
+    query: QueryRequest,
+    current_user: Optional[Customer] = Depends(get_optional_user) # <--- NEW: Inject User
+):
     logger.info(f"Received STREAM chat request for session: {query.session_id}")
+    user_id = current_user.id if current_user else None
+    
+    if user_id:
+        logger.info(f"User identified: {current_user.email} (ID: {user_id})")
+    else:
+        logger.info("User is anonymous (Guest).")
+
     try:
+        # Pass user_id to the service
         return StreamingResponse(
-            chat_service.stream_chat_generator(query.session_id, query.question),
+            chat_service.stream_chat_generator(query.session_id, query.question, user_id),
             media_type="text/event-stream"
         )
     except Exception as e:
@@ -30,10 +44,15 @@ async def handle_chat_stream(query: QueryRequest):
 
 # --- CHAT ENDPOINT: SYNCHRONOUS ---
 @router.post("/chat", response_model=QueryResponse)
-async def handle_chat(query: QueryRequest):
+async def handle_chat(
+    query: QueryRequest,
+    current_user: Optional[Customer] = Depends(get_optional_user) # <--- NEW
+):
     logger.info(f"Received SYNC chat request for session: {query.session_id}")
+    user_id = current_user.id if current_user else None
+
     try:
-        response_data = await chat_service.get_full_response(query.session_id, query.question)
+        response_data = await chat_service.get_full_response(query.session_id, query.question, user_id)
         return QueryResponse(answer=response_data['answer'])
     except Exception as e:
         logger.error(f"Error in sync chat endpoint: {e}", exc_info=True)

@@ -1,5 +1,5 @@
 import os
-from typing import TypedDict, List
+from typing import TypedDict, List, Optional
 from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
@@ -11,6 +11,9 @@ import httpx
 # IMPORT LOGGER
 from src.utils.logging_config import get_logger
 
+# IMPORT TOOLS
+from src.api.services.tools import check_stock_tool
+
 logger = get_logger(__name__)
 
 load_dotenv()
@@ -20,14 +23,15 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 # Initialize LLM 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-# Define Agent State
+# --- Agent State ---
 class AgentState(TypedDict):
     question: str 
     original_question: str
     chat_history: List[BaseMessage] 
     generation: str 
     intermediate_steps: list 
-    route: str 
+    route: str
+    user_id: Optional[int]
 
 logger.info("Initial setup complete. AgentState defined.")
 
@@ -41,8 +45,6 @@ formulate a standalone question/statement which can be understood without the ch
 2. **Preserve Intent:** - If the user asks a question ("What is the price?"), keep it as a question ("What is the price of X?").
    - If the user states an ACTION ("I want to buy it", "Order this"), keep it as an ACTION ("I want to order X"). 
    - **DO NOT** change an order request into a "How to" question.
-     - BAD: "What is the process to buy X?"
-     - GOOD: "I want to purchase X."
 
 Chat History:
 {chat_history}
@@ -53,18 +55,13 @@ rewrite_prompt = ChatPromptTemplate.from_template(REWRITE_PROMPT_TEMPLATE)
 rewrite_chain = rewrite_prompt | llm | StrOutputParser()
 
 def rewrite_query(state: AgentState) -> AgentState:
-    """
-    Rewrites the user's question to be standalone based on chat history.
-    """
     logger.info("---NODE: rewrite_query---")
     question = state["question"]
     chat_history = state.get("chat_history", [])
 
-    # If no history, no need to rewrite
     if not chat_history:
         return {"original_question": question}
 
-    # Convert history to string for the LLM
     history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history[-6:]])
     
     try:
@@ -122,7 +119,7 @@ def query_vector_db(state: AgentState) -> AgentState:
         
         if not retrieved_docs_str or "No relevant information" in retrieved_docs_str:
              logger.info("Vector DB API returned no documents.")
-             intermediate_steps.append({"tool": "vector_db", "result": "No relevant information found in the vector database."})
+             intermediate_steps.append({"tool": "vector_db", "result": "No relevant information found."})
         else:
              logger.info(f"Vector DB API retrieved: {retrieved_docs_str[:200]}...")
              intermediate_steps.append({"tool": "vector_db", "result": retrieved_docs_str})
@@ -139,7 +136,7 @@ Based on the chat history and the latest user input, identify the specific produ
 
 Rules:
 1. Look at the "User's input" first. If the full product name is there, use it.
-2. If the input uses "it" or "that", look at the "Chat History" (Assistant messages) to find the last mentioned product.
+2. If the input uses "it" or "that", look at the "Chat History" to find the last mentioned product.
 3. Return ONLY the product name. No extra text.
 4. If no product is found, return "None".
 
@@ -151,11 +148,26 @@ User's input: {question}
 extraction_prompt = ChatPromptTemplate.from_template(EXTRACTION_PROMPT)
 extraction_chain = extraction_prompt | llm | StrOutputParser()
 
+# --- SMART ORDER NODE ---
 def prepare_order_form_response(state: AgentState) -> AgentState:
     logger.info("---NODE: prepare_order_form_response---")
+    
+    # 1. PERMISSION CHECK
+    user_id = state.get("user_id")
+    if not user_id:
+        logger.warning("Order attempted without user_id. Blocking.")
+        return {
+            "intermediate_steps": state.get("intermediate_steps", []) + [{
+                "type": "auth_error", 
+                "message": "Please log in or register to place an order."
+            }]
+        }
+
     question = state["question"]
     chat_history = state.get("chat_history", [])
+    intermediate_steps = state.get("intermediate_steps", [])
 
+    # 2. EXTRACT PRODUCT
     product_context = "None"
     try:
         history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history[-6:]])
@@ -166,53 +178,73 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
         logger.error(f"Error extracting product context: {e}", exc_info=True)
         product_context = ""
 
-    initial_message = "It sounds like you'd like to place an order. I can help you with that. Please fill out the form below."
+    # 3. SAFETY: If no product extracted, DO NOT show form. Ask for clarification.
+    if not product_context:
+        logger.warning("Could not extract specific product for order.")
+        return {
+            "intermediate_steps": intermediate_steps + [{
+                "type": "stock_error",
+                "message": "I'm not sure which product you want to order. Could you please specify the name?"
+            }]
+        }
+
+    # 4. STOCK CHECK (Smart Agent)
+    # We now have a product name, so we check stock.
+    stock_status = check_stock_tool.invoke(product_context)
+    logger.info(f"DEBUG: Stock Tool Output for '{product_context}': {stock_status}") # <--- DEBUG LOG
+    
+    # Check for failure keywords from tools.py
+    if "UNAVAILABLE" in stock_status or "Error" in stock_status or "not found" in stock_status.lower():
+            logger.info(f"Stock check failed: {stock_status}")
+            
+            user_msg = f"I'm sorry, but {product_context} appears to be out of stock."
+            if "not found" in stock_status.lower():
+                user_msg = f"I couldn't find a product named '{product_context}' in our catalog."
+                
+            return {
+            "intermediate_steps": intermediate_steps + [{
+                "type": "stock_error",
+                "message": user_msg
+            }]
+            }
+    
+    # 5. SUCCESS SIGNAL
+    # Use the product name from the Stock Tool if possible (it corrects the name), otherwise use extracted.
+    # The stock tool output format is "AVAILABLE: Product 'Exact Name'..."
+    final_product_name = product_context
+    if "Product '" in stock_status:
+        try:
+            # Extract distinct name from tool output: "Product 'Name' (ID..."
+            start = stock_status.find("Product '") + 9
+            end = stock_status.find("'", start)
+            if start > 8 and end > start:
+                final_product_name = stock_status[start:end]
+        except: pass
+
+    initial_message = f"I can help you place an order for the {final_product_name}. Please confirm the details below."
     form_signal = {
         "type": "order_form", 
         "message": initial_message, 
         "request_id": f"req_{hash(question)}",
-        "prefill_product": product_context 
+        "prefill_product": final_product_name 
     }
     
-    intermediate_steps = state.get("intermediate_steps", [])
     intermediate_steps.append(form_signal)
     return {"intermediate_steps": intermediate_steps}
 
 # --- ROUTER LOGIC ---
 ROUTER_PROMPT_TEMPLATE = """
-You are an expert router agent. Your task is to analyze the user's question and choose the correct tool.
+You are an expert router agent.
 Output JSON with keys: "reasoning" and "route".
 
 Routes:
+1. 'graph_db': Product details, prices, availability, or general shopping ("Show me routers").
+2. 'vector_db': Services, contact info, procedures.
+3. 'order_form': ONLY when user explicitly wants to BUY/ORDER a SPECIFIC item found in context.
+4. 'general': Greetings, small talk.
 
-1. 'graph_db': Use this for questions about specific product details, prices, availability, OR general shopping requests.
-   - "What routers do you sell?"
-   - "How much is the Tenda F3?"
-   - "I want to buy a router." (User hasn't picked one yet -> Show options)
-   - "I'm looking for a security camera." (User needs options -> Show options)
-   - "Show me available options."
-
-2. 'vector_db': Use this for company services, procedures, contact info, or social media content.
-   - "What services do you provide?"
-   - "How do I contact support?"
-   - "What is the process to apply?"
-
-3. 'order_form': Use this ONLY when the user explicitly says they want to BUY or PLACE AN ORDER for a SPECIFIC item found in previous context.
-   - "I want to buy the Tenda F3." (Specific Item named)
-   - "Place an order for it." (Referring to specific item in history)
-   - "Add the Prolink router to my cart."
-   - "I'll take the first one."
-   
-   *CRITICAL RULE:* If the user says "I want to buy a router" (General Category), route to 'graph_db'. Only route to 'order_form' if a specific product model is identified.
-
-4. 'general': Use this for greetings, small talk, or questions about the user's name.
-   - "Hello"
-   - "Who am I?"
-
-Here is the user's question:
-{question}
+User Question: {question}
 """
-
 router_prompt = ChatPromptTemplate.from_template(ROUTER_PROMPT_TEMPLATE)
 router_chain = router_prompt | llm | JsonOutputParser()
 
@@ -223,7 +255,7 @@ def route_query(state: AgentState) -> AgentState:
 
     response_json = router_chain.invoke({"question": question})
     route_decision = response_json.get("route", "vector_db")
-    logger.info(f"Routing decision: {route_decision}, (Reason: {response_json.get('reasoning', 'N/A')})")
+    logger.info(f"Routing decision: {route_decision}")
 
     if route_decision == "graph_db": return {"route": "neo4j", "intermediate_steps": []}
     elif route_decision == "vector_db": return {"route": "vector", "intermediate_steps": []}
@@ -231,31 +263,26 @@ def route_query(state: AgentState) -> AgentState:
     else: return {"route": "general", "intermediate_steps": []}
 
 # --- SYNTHESIS & GENERATION ---
-
-# Specialized Prompt for Pure Conversation With Memory
 GENERAL_CONVERSATION_TEMPLATE = """
 You are a helpful assistant for SLT-MOBITEL.
-The user has asked a general conversational question.
-
-**INSTRUCTIONS:**
-1. Check the Chat History.
-2. If the user asks a personal question (e.g., "Do you remember my name?", "Who am I?"), answer it from history.
-3. If the user greets you ("Hello", "Hi"), return a polite greeting.
-4. If the user asks about **Products, Services, Prices, Routers, Internet/Fiber Connections, or Company Details**, you MUST output: SEARCH_REQUIRED.
-5. **NEVER** invent product information or answer product questions from your general knowledge.
+Instructions:
+1. If greeting, greet back.
+2. If asking about products/services, output: SEARCH_REQUIRED.
+3. Otherwise, answer from history.
 
 Chat History:
 {chat_history}
-
 User Question: {question}
 """
 general_prompt = ChatPromptTemplate.from_template(GENERAL_CONVERSATION_TEMPLATE)
 general_chain = general_prompt | llm | StrOutputParser()
 
-# 2. Synthesis Prompt (for DB results)
+# --- UPDATED SYNTHESIS PROMPT (FIX DOUBLE FORM) ---
 SYNTHESIS_PROMPT_TEMPLATE = """
 You are a helpful AI assistant for SLT-MOBITEL. Answer based ONLY on context.
-(Your original synthesis prompt content...)
+
+**CRITICAL INSTRUCTION:** If the context contains an "order_form" signal, simply reply with a polite confirmation message (e.g., "Sure, I can help with that.").
+**DO NOT** generate the tag [SHOW_ORDER_FORM:...] in your output text. The system will add it automatically.
 
 Chat History:
 {chat_history}
@@ -282,101 +309,72 @@ def generate_response(state: AgentState) -> AgentState:
         conversation_result = general_chain.invoke({"chat_history": history_str, "question": question})
         
         if "SEARCH_REQUIRED" not in conversation_result:
-            logger.info("Handled as pure conversation (Memory used).")
-            response = conversation_result
-            updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=response)]
-            return {"generation": response, "chat_history": updated_history}
-        else:
-            logger.info("General query requires external info. Falling back to ChromaDB...")
-
+            updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=conversation_result)]
+            return {"generation": conversation_result, "chat_history": updated_history}
+        
     # --- FALLBACK / DB LOGIC ---
-    if original_route == "general" and not intermediate_steps:
-        try:
-            resp = httpx.post(f"{API_BASE_URL}/db/vector/search", json={"question": question}, timeout=60.0)
-            resp.raise_for_status()
-            chroma_result = resp.json().get("result", "No relevant info")
-            intermediate_steps.append({"tool": "vector_db_general", "result": chroma_result})
-        except Exception as e:
-            logger.error(f"Error in general fallback: {e}", exc_info=True)
-
     neo4j_no_results = any(step.get("tool") == "neo4j_qa" and step.get("no_results") for step in intermediate_steps)
-    if neo4j_no_results:
-        logger.info("Neo4j empty, trying Chroma fallback...")
+    if (original_route == "general" and not intermediate_steps) or neo4j_no_results:
         try:
             resp = httpx.post(f"{API_BASE_URL}/db/vector/search", json={"question": question}, timeout=60.0)
             chroma_result = resp.json().get("result", "No relevant info")
             intermediate_steps.append({"tool": "vector_db_fallback", "result": chroma_result})
         except: pass
 
-    # --- FINAL SYNTHESIS ---
-    context_str = "\n".join([str(step) for step in intermediate_steps])
-    history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history])
-    final_input_question = state.get("original_question", question)
+    # --- CHECK FOR ERRORS (Auth/Stock) ---
+    auth_error = next((step for step in intermediate_steps if isinstance(step, dict) and step.get("type") == "auth_error"), None)
+    stock_error = next((step for step in intermediate_steps if isinstance(step, dict) and step.get("type") == "stock_error"), None)
 
-    final_answer = synthesis_chain.invoke({
-        "question": final_input_question,
-        "intermediate_steps": context_str,
-        "chat_history": history_str 
-    })
-    
-    # --- ORDER FORM FORCE ---
-    order_signal = next((step for step in intermediate_steps if isinstance(step, dict) and step.get("type") == "order_form"), None)
-    
-    if order_signal:
-        logger.info("Appending forced Order Form signal to response.")
-        req_id = order_signal.get("request_id", "req_000")
-        prefill = order_signal.get("prefill_product", "")
+    if auth_error:
+        final_answer = auth_error["message"]
+    elif stock_error:
+        final_answer = stock_error["message"]
+    else:
+        # --- FINAL SYNTHESIS ---
+        context_str = "\n".join([str(step) for step in intermediate_steps])
+        history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history])
         
-        if prefill:
+        final_answer = synthesis_chain.invoke({
+            "question": state.get("original_question", question),
+            "intermediate_steps": context_str,
+            "chat_history": history_str 
+        })
+        
+        # --- ORDER FORM FORCE (Python side only) ---
+        order_signal = next((step for step in intermediate_steps if isinstance(step, dict) and step.get("type") == "order_form"), None)
+        
+        if order_signal:
+            logger.info("Appending forced Order Form signal to response.")
+            req_id = order_signal.get("request_id", "req_000")
+            prefill = order_signal.get("prefill_product", "")
+            
+            # Append signal cleanly
             final_answer += f"\n\n[SHOW_ORDER_FORM:{req_id}|{prefill}]"
-        else:
-            final_answer += f"\n\n[SHOW_ORDER_FORM:{req_id}]"
 
     logger.info(f"Generated final answer: {final_answer}")
-    updated_history = chat_history + [HumanMessage(content=final_input_question), AIMessage(content=final_answer)]
+    updated_history = chat_history + [HumanMessage(content=state.get("original_question", question)), AIMessage(content=final_answer)]
     return {"generation": final_answer, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
 
-# --- GRAPH BUILD ---
+# --- GRAPH BUILD (Unchanged) ---
 workflow = StateGraph(AgentState)
-
-# Add Nodes
 workflow.add_node("rewrite", rewrite_query)
 workflow.add_node("router", route_query)
 workflow.add_node("query_neo4j", query_graph_db)
 workflow.add_node("query_vector", query_vector_db)
 workflow.add_node("prepare_order", prepare_order_form_response)
 workflow.add_node("generate", generate_response)
-
-# Set Entry Point
 workflow.set_entry_point("rewrite")
-
-# Define Edges
 workflow.add_edge("rewrite", "router") 
-
 def decide_next_node(state: AgentState):
-    logger.info(f"---DECISION: Based on route '{state['route']}'---")
     if state['route'] == "neo4j": return "query_neo4j"
     elif state['route'] == "vector": return "query_vector"
     elif state['route'] == "order_form": return "prepare_order" 
     elif state['route'] == "general": return "generate"  
     else: return END
-
-workflow.add_conditional_edges(
-    "router",     
-    decide_next_node,   
-    {
-        "query_neo4j": "query_neo4j", 
-        "query_vector": "query_vector",
-        "prepare_order": "prepare_order",
-        "generate": "generate",
-        END: END                    
-    }
-)
-
+workflow.add_conditional_edges("router", decide_next_node, {"query_neo4j":"query_neo4j", "query_vector":"query_vector", "prepare_order":"prepare_order", "generate":"generate", END:END})
 workflow.add_edge("query_neo4j", "generate")
 workflow.add_edge("query_vector", "generate")
 workflow.add_edge("prepare_order", "generate")
 workflow.add_edge("generate", END)
-
 app = workflow.compile()
 logger.info("Graph compiled successfully!")

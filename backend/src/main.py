@@ -16,7 +16,7 @@ load_dotenv()
 from .api.services.chat_service import chat_histories 
 
 # Importing Routers
-from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin, email, neo4j_products, auth, orders
+from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin, email, neo4j_products, auth, orders, products
 
 logger.info("FastAPI application initialized and routers included.")
 
@@ -58,5 +58,6 @@ api.include_router(email.router)
 api.include_router(neo4j_products.router)
 api.include_router(orders.router)
 api.include_router(auth.router)
+api.include_router(products.router)
 
 logger.info("FastAPI startup complete. All routers registered.")

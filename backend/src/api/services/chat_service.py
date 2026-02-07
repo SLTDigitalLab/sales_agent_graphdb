@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 import json
 import asyncio
@@ -22,7 +22,7 @@ chat_histories: Dict[str, List[BaseMessage]] = {}
 
 # Core Logic Functions
 
-async def stream_chat_generator(session_id: str, question: str):
+async def stream_chat_generator(session_id: str, question: str, user_id: Optional[int] = None):
     """
     Asynchronous generator to stream tokens from the LangGraph agent.
     """
@@ -33,26 +33,37 @@ async def stream_chat_generator(session_id: str, question: str):
         return
 
     current_chat_history = chat_histories.get(session_id, [])
-    inputs = {"question": question, "chat_history": current_chat_history}
+    
+    # --- UPDATED INPUTS with user_id ---
+    inputs = {
+        "question": question, 
+        "chat_history": current_chat_history,
+        "user_id": user_id  # <--- Pass to Agent State
+    }
+    
     final_answer_tokens = []
     
     # Stream from LangGraph
     try:
-        async for chunk in agent_app.astream(inputs, stream_mode="messages"):
+        # Note: Using stream_mode="messages" or "values" depending on graph setup. 
+        # Since we use 'generate' node in graph, iterating over updates is safer.
+        async for chunk in agent_app.astream(inputs, stream_mode="updates"):
+            
+            # Check for generation output
             if 'generate' in chunk:
                 message_content = chunk['generate'].get('generation')
-
-                if isinstance(message_content, AIMessage) and message_content.content:
-                    token = message_content.content
-                    final_answer_tokens.append(token)
-                    yield f"data: {json.dumps({'content': token})}\n\n"
-
-                elif isinstance(message_content, str):
+                
+                # If content is a full string (since your 'generate' node returns full string)
+                if isinstance(message_content, str):
+                    # In this specific graph setup, 'generate' node returns the FULL answer at once, 
+                    # not tokens. So we yield it all.
                     token = message_content
                     final_answer_tokens.append(token)
                     yield f"data: {json.dumps({'content': token})}\n\n"
         
         # Update history
+        # Since 'generate' node updates history in state, we should grab it from there ideally,
+        # but for simplicity in streaming, we append the result we got.
         final_answer = "".join(final_answer_tokens)
         if final_answer:
             updated_history = current_chat_history + [HumanMessage(content=question), AIMessage(content=final_answer)]
@@ -66,7 +77,7 @@ async def stream_chat_generator(session_id: str, question: str):
         yield f"data: {json.dumps({'content': '[DONE]'})}\n\n"
 
 
-async def get_full_response(session_id: str, question: str):
+async def get_full_response(session_id: str, question: str, user_id: Optional[int] = None):
     """
     Invokes the agent synchronously (waits for full response).
     """
@@ -75,7 +86,13 @@ async def get_full_response(session_id: str, question: str):
         return {"answer": "Agent not initialized. Check server logs."}
         
     current_chat_history = chat_histories.get(session_id, [])
-    inputs = {"question": question, "chat_history": current_chat_history}
+    
+    # --- UPDATED INPUTS with user_id ---
+    inputs = {
+        "question": question, 
+        "chat_history": current_chat_history,
+        "user_id": user_id  # <--- Pass to Agent State
+    }
     
     try:
         final_state = await agent_app.ainvoke(inputs) 
