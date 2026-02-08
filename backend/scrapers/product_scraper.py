@@ -20,11 +20,13 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.join(script_dir, '..', '..')
 sys.path.append(project_root)
 
-# --- 2. DATABASE IMPORTS 
+# --- 2. DATABASE IMPORTS ---
 from src.api.db.sessions import SessionLocal
 from src.api.db.models import Product
+# NEW: Import the sync function
+from src.api.services.neo4j_service import run_neo4j_ingestion
 
-# --- 3. LOGGER 
+# --- 3. LOGGER ---
 try:
     from src.utils.logging_config import get_logger
     logger = get_logger(__name__)
@@ -197,16 +199,25 @@ def save_products(data_list):
         added = 0
         
         for item in data_list:
+            # Check for existing product by SKU (this matches the Seeded data)
             product = db.query(Product).filter(Product.sku == item['sku']).first()
             
             if product:
-                product.price = item['price']
-                if item['image_url']: product.image_url = item['image_url']
+                # UPDATE Mode: Fill in the missing descriptions!
                 if item['description']: product.description = item['description']
+                if item['image_url']: product.image_url = item['image_url']
+                
+                # Update metadata if needed
                 product.product_url = item['url']
                 product.category = item['category_name']
+                # NOTE: We do NOT update price to 0.0 if scraper fails. 
+                # We trust the CSV price more, so only update if scraper found a valid price > 0
+                if item['price'] > 0:
+                    product.price = item['price']
+                    
                 updated += 1
             else:
+                # CREATE Mode: Found a new product not in CSV
                 new_product = Product(
                     sku=item['sku'],
                     name=item['product_name'],
@@ -257,10 +268,20 @@ def scrape_catalog(custom_start_urls=None):
             data = extract_details(driver, link, cat_name)
             if data:
                 all_products.append(data)
-                if i % 10 == 0 and i > 0: save_products(all_products)
-
+                if i % 10 == 0 and i > 0: save_products([data]) 
+                
+        # Final Save
         save_products(all_products)
         logger.info("Scraping Complete.")
+        
+        # TRIGGER NEO4J SYNC
+        logger.info("🔄 Triggering Full Neo4j Synchronization...")
+        try:
+            run_neo4j_ingestion()
+            logger.info("✅ Neo4j Sync Successful!")
+        except Exception as e:
+            logger.error(f"❌ Neo4j Sync Failed: {e}")
+
         return all_products
 
     except Exception as e:
