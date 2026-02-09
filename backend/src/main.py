@@ -7,11 +7,17 @@ from dotenv import load_dotenv
 # SETUP LOGGING
 from .utils.logging_config import setup_logging, get_logger
 
+from .api.db.sessions import engine
+from .api.db.models import Base
+
 # Initialize logging configuration immediately
 setup_logging()
 logger = get_logger(__name__)
 
 load_dotenv()
+
+Base.metadata.create_all(bind=engine)
+logger.info("Database tables created (if they didn't exist).")
 
 from .api.services.chat_service import chat_histories 
 
