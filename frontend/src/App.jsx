@@ -1,9 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import DashboardLayout from './components/DashboardLayout'; // Import Layout
+import DashboardLayout from './components/DashboardLayout'; 
 
 import Chat from './pages/Chat';
-import Login from './pages/Login';
+import AdminLogin from './pages/AdminLogin';
 import Dashboard from './pages/Dashboard';
 
 const ProtectedRoute = ({ children }) => {
@@ -21,7 +21,7 @@ export default function App() {
           <Route path="/" element={<Chat />} />
 
           {/* Admin Login */}
-          <Route path="/admin/login" element={<Login />} />
+          <Route path="/admin/login" element={<AdminLogin/>} />
 
           {/* Admin Protected Routes (Wrapped in Layout) */}
           <Route path="/admin" element={
