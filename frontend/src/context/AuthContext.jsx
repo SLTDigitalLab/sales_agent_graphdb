@@ -3,14 +3,15 @@ import { createContext, useState, useContext, useEffect } from 'react';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(localStorage.getItem('admin_token'));
+  // 1. Rename the key to a generic 'access_token'
+  const [token, setToken] = useState(localStorage.getItem('access_token'));
 
-  // Sync with localStorage whenever token changes
   useEffect(() => {
     if (token) {
-      localStorage.setItem('admin_token', token);
+      // 2. Store using the generic key
+      localStorage.setItem('access_token', token);
     } else {
-      localStorage.removeItem('admin_token');
+      localStorage.removeItem('access_token');
     }
   }, [token]);
 

@@ -4,11 +4,16 @@ import DashboardLayout from './components/DashboardLayout';
 
 import Chat from './pages/Chat';
 import AdminLogin from './pages/AdminLogin';
+import UserLogin from './pages/UserLogin'; 
+import Register from './pages/Register';   
 import Dashboard from './pages/Dashboard';
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { token } = useAuth();
-  if (!token) return <Navigate to="/admin/login" replace />;
+  
+  if (!token) {
+    return <Navigate to={adminOnly ? "/admin/login" : "/login"} replace />;
+  }
   return children;
 };
 
@@ -17,25 +22,34 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Chat */}
-          <Route path="/" element={<Chat />} />
+          {/* Public Landing (Optional: can redirect to login or chat) */}
+          <Route path="/" element={<Navigate to="/chat" replace />} />
 
-          {/* Admin Login */}
+          {/* User Auth Routes */}
+          <Route path="/login" element={<UserLogin />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* User Protected Chat */}
+          <Route path="/chat" element={
+            <ProtectedRoute>
+              <Chat />
+            </ProtectedRoute>
+          } />
+
+          {/* Admin Auth */}
           <Route path="/admin/login" element={<AdminLogin/>} />
 
-          {/* Admin Protected Routes (Wrapped in Layout) */}
+          {/* Admin Protected Routes */}
           <Route path="/admin" element={
-            <ProtectedRoute>
-              <DashboardLayout /> {/* Layout wraps the routes inside */}
+            <ProtectedRoute adminOnly={true}>
+              <DashboardLayout />
             </ProtectedRoute>
           }>
-            {/* The index route renders Dashboard.jsx inside the Layout's <Outlet /> */}
             <Route index element={<Dashboard />} />
-            
-            {/* Future: You can add more admin pages here effortlessly */}
-            {/* <Route path="settings" element={<SettingsPage />} /> */}
           </Route>
 
+          {/* Fallback for 404s */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
