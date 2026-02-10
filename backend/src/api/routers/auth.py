@@ -4,7 +4,14 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import os
 
-from src.core.security import verify_password, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+# Added ADMIN_ACCESS_TOKEN_EXPIRE_MINUTES to imports
+from src.core.security import (
+    verify_password, 
+    get_password_hash, 
+    create_access_token, 
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ADMIN_ACCESS_TOKEN_EXPIRE_MINUTES
+)
 from src.api.db.sessions import get_db
 from src.api.db.models import Customer
 from src.api.schemas import CustomerCreate, CustomerOut, Token, CustomerLogin
@@ -34,7 +41,7 @@ def register_customer(user: CustomerCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
-# 2. CUSTOMER LOGIN 
+# 2. CUSTOMER LOGIN (Standard JSON login)
 @router.post("/login", response_model=Token)
 def login_json(user_data: CustomerLogin, db: Session = Depends(get_db)):
     user = db.query(Customer).filter(Customer.email == user_data.email).first()
@@ -46,7 +53,7 @@ def login_json(user_data: CustomerLogin, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Create Token
+    # Create Token with 24-hour expiry
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email, "id": user.id, "role": user.role},
@@ -55,17 +62,22 @@ def login_json(user_data: CustomerLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# 3. ADMIN LOGIN 
+# 3. ADMIN LOGIN (OAuth2 Form login)
 @router.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     
+    # Check for Hardcoded Admin
     if form_data.username == ADMIN_USER:
         if verify_password(form_data.password, ADMIN_HASH):
+            # Apply 1-hour expiry for Admin
+            admin_expires = timedelta(minutes=ADMIN_ACCESS_TOKEN_EXPIRE_MINUTES)
             access_token = create_access_token(
-                data={"sub": "admin", "id": 0, "role": "admin"}
+                data={"sub": "admin", "id": 0, "role": "admin"},
+                expires_delta=admin_expires
             )
             return {"access_token": access_token, "token_type": "bearer"}
 
+    # Fallback: Check if a Customer is using this form
     user = db.query(Customer).filter(Customer.email == form_data.username).first()
     
     if not user or not verify_password(form_data.password, user.password_hash):
@@ -75,7 +87,10 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Apply 24-hour expiry for Customers using this form
+    user_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.email, "id": user.id, "role": user.role}
+        data={"sub": user.email, "id": user.id, "role": user.role},
+        expires_delta=user_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
