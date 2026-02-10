@@ -1,5 +1,4 @@
 import time
-import json
 import csv
 import re
 import os
@@ -10,23 +9,23 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 
 # --- 1. SETUP PATHS ---
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.join(script_dir, '..', '..')
-sys.path.append(project_root)
+# Docker path: /app/scrapers/product_scraper.py
+# We want: /app/data/products.csv
+script_dir = os.path.dirname(os.path.abspath(__file__)) # /app/scrapers
+project_root = os.path.dirname(script_dir)              # /app
 
-# --- 2. DATABASE IMPORTS ---
-from src.api.db.sessions import SessionLocal
-from src.api.db.models import Product
-# NEW: Import the sync function
-from src.api.services.neo4j_service import run_neo4j_ingestion
+# Ensure /app/data exists
+DATA_DIR = os.path.join(project_root, 'data')
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
 
-# --- 3. LOGGER ---
+CSV_PATH = os.path.join(DATA_DIR, 'products.csv')
+
+# --- 2. LOGGER ---
 try:
     from src.utils.logging_config import get_logger
     logger = get_logger(__name__)
@@ -53,6 +52,7 @@ def setup_driver():
 
 def clean_price(price_str):
     if not price_str: return 0.0
+    # Remove "Rs.", "LKR", commas, spaces, newlines. Keep digits and dots.
     clean = re.sub(r'[^\d.]', '', str(price_str))
     try:
         return float(clean)
@@ -104,7 +104,8 @@ def get_product_links(driver, category_url):
 def extract_details(driver, url, category_name):
     try:
         driver.get(url)
-        time.sleep(1) 
+        # Wait slightly longer for dynamic content
+        time.sleep(1.5) 
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
@@ -122,27 +123,46 @@ def extract_details(driver, url, category_name):
             hash_object = hashlib.md5(url.encode())
             sku = f"GEN-{hash_object.hexdigest()[:8].upper()}"
 
-        # 3. Price
+        # 3. Price (IMPROVED LOGIC)
         price = 0.0
-        price_tag = soup.select_one('.field--name-price') 
+        
+        # Strategy A: Look for the specific price class (Standard)
+        price_tag = soup.select_one('.product-price .field--name-price') 
+        if not price_tag:
+            price_tag = soup.select_one('.price') # Fallback class
+            
         if price_tag:
             price = clean_price(price_tag.get_text())
-        
+
+        # Strategy B: Search for "Rs." text if Strategy A failed
         if price == 0.0:
-            # Fallbacks
-            price_tags = soup.select('.price, .product-price')
-            for tag in price_tags:
-                found = clean_price(tag.get_text())
-                if found > 100:
-                    price = found
-                    break
+            # Find all text elements containing "Rs."
+            candidates = soup.find_all(string=re.compile(r'Rs\.'))
+            for cand in candidates:
+                # Get the parent text (e.g., "Rs. 25,000")
+                text = cand.parent.get_text().strip()
+                # If it looks like a price (short, has digits)
+                if len(text) < 30 and any(char.isdigit() for char in text):
+                    found_price = clean_price(text)
+                    if found_price > 0:
+                        price = found_price
+                        break
+
+        # Strategy C: Meta tag fallback
+        if price == 0.0:
+            meta_price = soup.find("meta", property="product:price:amount")
+            if meta_price:
+                price = clean_price(meta_price.get("content"))
+
+        # Log warning if still 0 (Helpful for debugging)
+        if price == 0.0:
+            logger.warning(f"⚠️ Could not find price for {product_name} ({url})")
 
         # 4. Image Extraction
         image_url = None
         target_img = soup.select_one("img.image-style-product-image-large")
         if target_img:
             image_url = target_img.get('src')
-        
         if not image_url:
             main_imgs = soup.select(".region-content img")
             for img in main_imgs:
@@ -150,28 +170,21 @@ def extract_details(driver, url, category_name):
                 if 'product' in src or 'styles' in src:
                     image_url = src
                     break
-        
         if image_url and image_url.startswith('/'):
             image_url = BASE_DOMAIN + image_url
 
-        # 5. Description & Specs Extraction
+        # 5. Description
         description_parts = []
-        
-        # Part A: Overview (Product Description)
         overview_div = soup.select_one("#overview .field--name-body")
         if overview_div:
             text = overview_div.get_text(separator="\n", strip=True)
-            if len(text) > 10:
-                description_parts.append(f"Overview:\n{text}")
+            if len(text) > 10: description_parts.append(f"Overview:\n{text}")
 
-        # Part B: Specifications
         spec_div = soup.select_one("#specification .field--name-field-specification")
         if spec_div:
             text = spec_div.get_text(separator="\n", strip=True)
-            if len(text) > 10:
-                description_parts.append(f"\nSpecifications:\n{text}")
+            if len(text) > 10: description_parts.append(f"\nSpecifications:\n{text}")
 
-        # Fallback if both tabs failed
         if not description_parts:
              meta_desc = soup.find("meta", {"name": "description"})
              if meta_desc: description_parts.append(meta_desc.get("content"))
@@ -184,64 +197,32 @@ def extract_details(driver, url, category_name):
             "price": price,
             "category_name": category_name,
             "url": url,
-            "image_url": image_url,
-            "description": full_description
+            "image_url": image_url or "",
+            "description": full_description or ""
         }
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error extracting {url}: {e}")
         return None
 
-def save_products(data_list):
+def save_to_csv(data_list):
+    """Saves the scraped data to a CSV file."""
     if not data_list: return
 
-    db = SessionLocal()
+    fieldnames = ["sku", "product_name", "price", "category_name", "url", "image_url", "description"]
+    
     try:
-        updated = 0
-        added = 0
-        
-        for item in data_list:
-            # Check for existing product by SKU (this matches the Seeded data)
-            product = db.query(Product).filter(Product.sku == item['sku']).first()
+        logger.info(f"Saving CSV to: {CSV_PATH}")
+        with open(CSV_PATH, mode='w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(data_list)
             
-            if product:
-                # UPDATE Mode: Fill in the missing descriptions!
-                if item['description']: product.description = item['description']
-                if item['image_url']: product.image_url = item['image_url']
-                
-                # Update metadata if needed
-                product.product_url = item['url']
-                product.category = item['category_name']
-                # NOTE: We do NOT update price to 0.0 if scraper fails. 
-                # We trust the CSV price more, so only update if scraper found a valid price > 0
-                if item['price'] > 0:
-                    product.price = item['price']
-                    
-                updated += 1
-            else:
-                # CREATE Mode: Found a new product not in CSV
-                new_product = Product(
-                    sku=item['sku'],
-                    name=item['product_name'],
-                    price=item['price'],
-                    category=item['category_name'],
-                    product_url=item['url'],
-                    image_url=item['image_url'],
-                    description=item['description'],
-                    stock_quantity=random.randint(0, 10)
-                )
-                db.add(new_product)
-                added += 1
-        
-        db.commit()
-        logger.info(f"SQL Sync: Added {added}, Updated {updated} products.")
-        
+        logger.info(f"CSV Saved: {len(data_list)} products written.")
     except Exception as e:
-        logger.error(f"Failed to save to SQL: {e}")
-        db.rollback()
-    finally:
-        db.close()
+        logger.error(f"Failed to save CSV: {e}")
 
 def scrape_catalog(custom_start_urls=None):
-    logger.info("Starting Scraper (Tab-Aware)...")
+    logger.info("Starting Scraper (CSV Mode)...")
     driver = setup_driver()
     all_products = []
     visited_urls = set()
@@ -268,20 +249,10 @@ def scrape_catalog(custom_start_urls=None):
             data = extract_details(driver, link, cat_name)
             if data:
                 all_products.append(data)
-                if i % 10 == 0 and i > 0: save_products([data]) 
-                
-        # Final Save
-        save_products(all_products)
-        logger.info("Scraping Complete.")
-        
-        # TRIGGER NEO4J SYNC
-        logger.info("🔄 Triggering Full Neo4j Synchronization...")
-        try:
-            run_neo4j_ingestion()
-            logger.info("✅ Neo4j Sync Successful!")
-        except Exception as e:
-            logger.error(f"❌ Neo4j Sync Failed: {e}")
 
+        # FINAL SAVE
+        save_to_csv(all_products)
+        logger.info("Scraping Complete. Data saved to products.csv")
         return all_products
 
     except Exception as e:

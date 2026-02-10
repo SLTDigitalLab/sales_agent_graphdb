@@ -36,16 +36,25 @@ async def query_graph(query: DbQueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/admin/ingest-neo4j", response_model=IngestResponse, tags=["Admin"])
-async def ingest_neo4j_data():
+async def ingest_master_data():
     """
-    Triggers the ingestion of products.csv into Neo4j.
-    This will WIPE and reload the graph data.
+    MASTER SYNC ENDPOINT:
+    1. Reads 'backend/data/products.csv' (Golden Copy).
+    2. Wipes & Reseeds Supabase SQL (Resetting IDs to 1).
+    3. Wipes & Reseeds Neo4j AuraDB.
+    
+    WARNING: This deletes all existing products and orders in SQL!
     """
-    logger.info("Received request to ingest Neo4j data via Admin endpoint.")
+    logger.info("Received MASTER INGESTION request via Admin endpoint.")
     try:
-        # Call the logic function from the service file
-        items_added = neo4j_service.run_neo4j_ingestion() 
-        return IngestResponse(message="Neo4j ingestion successful.", items_added=items_added)
+        stats = neo4j_service.run_master_ingestion()
+        
+        if "error" in stats:
+            raise HTTPException(status_code=500, detail=stats["error"])
+            
+        msg = f"Sync Complete. SQL: {stats['sql_added']}, Neo4j: {stats['neo4j_added']} items."
+        return IngestResponse(message=msg, items_added=stats['sql_added'])
+        
     except Exception as e:
         logger.error(f"Error in /admin/ingest-neo4j: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

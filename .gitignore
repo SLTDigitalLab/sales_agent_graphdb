@@ -18,6 +18,8 @@ __pycache__/
 # --- Backend Specific ---
 # Data folder
 backend/data/*.json
+# Data folder - csv
+backend/data/*.csv
 # The database folder (Chroma Vector DB)
 backend/chroma_data/
 # The generated products CSV
