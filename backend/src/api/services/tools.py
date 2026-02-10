@@ -130,6 +130,7 @@ def place_order_logic(user_id: int, product_id: int, quantity: int) -> str:
         order_item = OrderItem(
             order_id=new_order.id,
             product_id=product.id,
+            sku=product.sku,
             quantity=quantity,
             unit_price=product.price
         )

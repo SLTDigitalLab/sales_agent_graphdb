@@ -60,6 +60,7 @@ def place_order(
             order_item = OrderItem(
                 order_id=new_order.id,
                 product_id=product.id,
+                sku=product.sku,
                 quantity=qty,
                 unit_price=product.price
             )
