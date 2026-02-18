@@ -55,3 +55,32 @@ class OrderOut(BaseModel):
 
     class Config:
         from_attributes = True
+    
+    # --- Product Schemas ---
+class ProductBase(BaseModel):
+    sku: str
+    name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    price: float = 0.0
+    stock_quantity: int = 0
+    image_url: Optional[str] = None
+
+class ProductCreate(ProductBase):
+    pass  
+
+class ProductUpdate(BaseModel):
+    # All fields optional so you can update just the price or just the stock
+    sku: Optional[str] = None
+    name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    stock_quantity: Optional[int] = None
+    image_url: Optional[str] = None
+
+class ProductOut(ProductBase):
+    id: int
+
+    class Config:
+        from_attributes = True
