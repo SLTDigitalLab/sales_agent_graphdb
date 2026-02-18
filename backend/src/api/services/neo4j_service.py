@@ -230,3 +230,74 @@ def run_graph_query(question: str) -> str:
         return neo4j_qa_chain.invoke({"query": question}).get('result', "No result.")
     except Exception as e:
         return f"Error: {str(e)}"
+
+# --- REAL-TIME ADMIN SYNC FUNCTIONS ---
+
+def sync_single_product(product_data):
+    """
+    Syncs a single product from PostgreSQL to Neo4j.
+    Used by the Admin Dashboard for real-time updates.
+    """
+    if not NEO4J_URI:
+        logger.error("Neo4j connection info missing. Cannot sync.")
+        return
+
+    # Query to update/create product and link to category
+    sync_query = """
+    MERGE (c:Category {name: $category})
+    MERGE (p:Product {sku: $sku})
+    SET 
+        p.name = $name, 
+        p.price = toFloat($price),
+        p.url = $url,
+        p.image_url = $image_url,
+        p.stock_quantity = toInteger($stock_quantity)
+    MERGE (p)-[:IN_CATEGORY]->(c)
+    """
+    
+    driver = None
+    try:
+        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        with driver.session(database="neo4j") as session:
+            # Handle both dictionary or SQLAlchemy object
+            params = {
+                "category": getattr(product_data, 'category', 'Uncategorized'),
+                "sku": getattr(product_data, 'sku', ''),
+                "name": getattr(product_data, 'name', ''),
+                "price": float(getattr(product_data, 'price', 0)),
+                "url": getattr(product_data, 'product_url', ''), # Mapping product_url to url
+                "image_url": getattr(product_data, 'image_url', ''),
+                "stock_quantity": int(getattr(product_data, 'stock_quantity', 0))
+            }
+            session.run(sync_query, **params)
+            logger.info(f"Neo4j: Successfully synced product {params['sku']}")
+            
+            # Refresh LangChain graph schema to ensure the agent sees changes
+            if graph:
+                graph.refresh_schema()
+                
+    except Exception as e:
+        logger.error(f"Neo4j Single Sync Error: {e}")
+    finally:
+        if driver:
+            driver.close()
+
+def delete_product_node(sku: str):
+    """
+    Removes a product node from Neo4j using its SKU.
+    """
+    delete_query = "MATCH (p:Product {sku: $sku}) DETACH DELETE p"
+    
+    driver = None
+    try:
+        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        with driver.session(database="neo4j") as session:
+            session.run(delete_query, sku=sku)
+            logger.info(f"Neo4j: Deleted product node {sku}")
+            if graph:
+                graph.refresh_schema()
+    except Exception as e:
+        logger.error(f"Neo4j Delete Error: {e}")
+    finally:
+        if driver:
+            driver.close()
