@@ -1,3 +1,4 @@
+import uuid
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, validator
 from typing import Optional, List, Union
@@ -5,6 +6,8 @@ from src.api.services.config_manager import load_config, save_config
 from src.api.services.scraper_runner import run_general_scraping, run_product_scraping
 from src.api.services import db_service, neo4j_service
 from src.api.deps import get_current_user, get_current_admin
+from src.api.schemas import ProductCreate, ProductUpdate, ProductOut
+
 
 # IMPORT LOGGER
 from src.utils.logging_config import get_logger
@@ -180,3 +183,73 @@ async def clear_neo4j_data():
     except Exception as e:
         logger.error(f"Error clearing Neo4j: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- PRODUCT MANAGEMENT ---
+
+@router.get("/products", response_model=List[ProductOut])
+async def get_all_products():
+    """Fetch all products to display in the admin dashboard."""
+    try:
+        products = db_service.get_all_products()
+        return products
+    except Exception as e:
+        logger.error(f"Failed to fetch all products: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve products")
+
+@router.post("/products", response_model=ProductOut)
+async def create_new_product(product_data: ProductCreate):
+    """Create a new product in Postgres and sync it to Neo4j."""
+    try:
+        # 1. Save to PostgreSQL
+        new_product = db_service.create_product_in_db(product_data)
+        
+        # 2. Sync to Neo4j Knowledge Graph
+        neo4j_service.sync_single_product(new_product)
+        
+        return new_product
+    except Exception as e:
+        logger.error(f"Failed to create new product: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Creation failed: {str(e)}")
+
+@router.get("/products/{sku}", response_model=ProductOut)
+async def get_product_by_sku(sku: str):
+    """Fetch a specific product from Postgres using its SKU."""
+    product = db_service.get_product_by_sku(sku)
+    if not product:
+        raise HTTPException(status_code=404, detail=f"Product with SKU {sku} not found")
+    return product
+
+@router.patch("/products/{sku}", response_model=ProductOut)
+async def update_product_by_sku(sku: str, update_data: ProductUpdate):
+    """Update product and sync to Neo4j using SKU as the primary key."""
+    try:
+        # 1. Update PostgreSQL (Source of Truth)
+        updated_product = db_service.update_product_in_db_by_sku(sku, update_data)
+        if not updated_product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        # 2. Sync to Neo4j (Sales Agent Knowledge)
+        # The Neo4j service will use MERGE on the SKU to update the node
+        neo4j_service.sync_single_product(updated_product)
+        
+        return updated_product
+    except Exception as e:
+        logger.error(f"Failed to update product {sku}: {e}")
+        raise HTTPException(status_code=500, detail="Update failed")
+
+@router.delete("/products/{sku}")
+async def delete_product_by_sku(sku: str):
+    """Remove product from both systems using SKU."""
+    try:
+        # Delete from Postgres
+        deleted = db_service.delete_product_from_db_by_sku(sku)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Product not found in database")
+        
+        # Delete from Neo4j
+        neo4j_service.delete_product_node(sku)
+        
+        return {"message": f"Product {sku} successfully removed."}
+    except Exception as e:
+        logger.error(f"Delete failed for {sku}: {e}")
+        raise HTTPException(status_code=500, detail="Deletion failed")
