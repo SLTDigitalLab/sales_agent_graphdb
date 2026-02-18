@@ -12,8 +12,8 @@ SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
 ALGORITHM = "HS256"
 
 # Session Durations
-ACCESS_TOKEN_EXPIRE_MINUTES = 60       # 24 Hours for Users
-ADMIN_ACCESS_TOKEN_EXPIRE_MINUTES = 15      # 1 Hour for Admins
+ACCESS_TOKEN_EXPIRE_MINUTES = 60      
+ADMIN_ACCESS_TOKEN_EXPIRE_MINUTES = 15      
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
