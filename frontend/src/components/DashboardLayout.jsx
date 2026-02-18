@@ -7,7 +7,8 @@ import {
   LogOut, 
   MessageSquare, 
   Menu,
-  X
+  X,
+  ShoppingBag
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -19,7 +20,8 @@ export default function DashboardLayout() {
   // Navigation Items
   const navItems = [
     { name: 'Overview', path: '/admin', icon: <LayoutDashboard size={20} /> },
-    // You can add more pages here later, e.g.:
+    { name: 'Products', path: '/admin/products', icon: <ShoppingBag size={20} /> },
+
     // { name: 'Chat History', path: '/admin/chats', icon: <MessageSquare size={20} /> },
   ];
 

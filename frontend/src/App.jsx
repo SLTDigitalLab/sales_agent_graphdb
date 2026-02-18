@@ -7,6 +7,7 @@ import AdminLogin from './pages/AdminLogin';
 import UserLogin from './pages/UserLogin'; 
 import Register from './pages/Register';   
 import Dashboard from './pages/Dashboard';
+import Products from './pages/Products';
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { token } = useAuth();
@@ -46,6 +47,7 @@ export default function App() {
             </ProtectedRoute>
           }>
             <Route index element={<Dashboard />} />
+            <Route path="products" element={<Products />} />
           </Route>
 
           {/* Fallback for 404s */}
