@@ -8,7 +8,11 @@ from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, select, update, delete
+from sqlalchemy.orm import sessionmaker, declarative_base
+from src.api.schemas import ProductCreate, ProductUpdate
 import chromadb 
+
 
 # IMPORT LOGGER
 from src.utils.logging_config import get_logger
@@ -17,6 +21,71 @@ logger = get_logger(__name__)
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# POSTGRESQL CONFIGURATION 
+DATABASE_URL = os.getenv("DATABASE_URL") 
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Define the Product Model for SQLAlchemy
+class ProductModel(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    sku = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    category = Column(String)
+    description = Column(Text)
+    price = Column(Float, default=0.0)
+    stock_quantity = Column(Integer, default=0)
+    image_url = Column(String)
+
+# --- PRODUCT CRUD FUNCTIONS (SKU-BASED) ---
+
+def get_all_products():
+    """Fetch all products from PostgreSQL."""
+    with SessionLocal() as session:
+        return session.query(ProductModel).all()
+
+def get_product_by_sku(sku: str):
+    """Retrieve a single product by its SKU."""
+    with SessionLocal() as session:
+        return session.query(ProductModel).filter(ProductModel.sku == sku).first()
+
+def create_product(product_data: ProductCreate):
+    """Add a new product to PostgreSQL."""
+    with SessionLocal() as session:
+        db_product = ProductModel(**product_data.dict())
+        session.add(db_product)
+        session.commit()
+        session.refresh(db_product)
+        return db_product
+
+def update_product_in_db_by_sku(sku: str, update_data: ProductUpdate):
+    """Update product fields in PostgreSQL using the SKU."""
+    with SessionLocal() as session:
+        db_product = session.query(ProductModel).filter(ProductModel.sku == sku).first()
+        if not db_product:
+            return None
+        
+        # Apply only the fields that were provided in the request
+        update_dict = update_data.dict(exclude_unset=True)
+        for key, value in update_dict.items():
+            setattr(db_product, key, value)
+            
+        session.commit()
+        session.refresh(db_product)
+        return db_product
+
+def delete_product_from_db_by_sku(sku: str):
+    """Delete a product from PostgreSQL using the SKU."""
+    with SessionLocal() as session:
+        db_product = session.query(ProductModel).filter(ProductModel.sku == sku).first()
+        if db_product:
+            session.delete(db_product)
+            session.commit()
+            return True
+        return False
 
 # Initialize ChromaDB connection
 logger.info("Connecting to persistent ChromaDB...")
