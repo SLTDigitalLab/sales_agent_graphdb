@@ -253,3 +253,29 @@ async def delete_product_by_sku(sku: str):
     except Exception as e:
         logger.error(f"Delete failed for {sku}: {e}")
         raise HTTPException(status_code=500, detail="Deletion failed")
+
+# --- ORDER MANAGEMENT ---
+
+from src.api.schemas import OrderOut, OrderStatusUpdate
+
+@router.get("/orders", response_model=List[OrderOut])
+async def get_all_orders():
+    """Fetch all orders for the admin dashboard."""
+    try:
+        orders = db_service.get_all_orders()
+        return orders
+    except Exception as e:
+        logger.error(f"Failed to fetch orders: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve orders")
+
+@router.patch("/orders/{order_id}/status", response_model=OrderOut)
+async def update_order_status(order_id: int, update_data: OrderStatusUpdate):
+    """Update the processing status of an order."""
+    try:
+        updated_order = db_service.update_order_status(order_id, update_data.status)
+        if not updated_order:
+            raise HTTPException(status_code=404, detail=f"Order ID {order_id} not found")
+        return updated_order
+    except Exception as e:
+        logger.error(f"Failed to update order {order_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update order status")

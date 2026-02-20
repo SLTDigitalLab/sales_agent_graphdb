@@ -8,8 +8,8 @@ from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from sqlalchemy import create_engine, Column, Integer, String, Float, Text, select, update, delete
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, select, update, delete, DateTime, ForeignKey, Numeric
+from sqlalchemy.orm import sessionmaker, declarative_base, relationship, joinedload
 from src.api.schemas import ProductCreate, ProductUpdate
 import chromadb 
 
@@ -39,6 +39,30 @@ class ProductModel(Base):
     price = Column(Float, default=0.0)
     stock_quantity = Column(Integer, default=0)
     image_url = Column(String)
+
+# ---ORDER MODELS ---
+class OrderModel(Base):
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer)
+    status = Column(String)
+    total_amount = Column(Numeric(10, 2))
+    created_at = Column(DateTime)
+
+    # Establish relationship to items
+    items = relationship("OrderItemModel", back_populates="order", cascade="all, delete-orphan")
+
+class OrderItemModel(Base):
+    __tablename__ = "order_items"
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"))
+    product_id = Column(Integer)
+    quantity = Column(Integer)
+    unit_price = Column(Numeric(10, 2))
+    sku = Column(String)
+
+    # Establish relationship back to order
+    order = relationship("OrderModel", back_populates="items")
 
 # --- PRODUCT CRUD FUNCTIONS (SKU-BASED) ---
 
@@ -86,6 +110,29 @@ def delete_product_from_db_by_sku(sku: str):
             session.commit()
             return True
         return False
+    
+# --- ORDER CRUD FUNCTIONS ---
+def get_all_orders():
+    """Fetch all orders, including their nested items."""
+    with SessionLocal() as session:
+        # joinedload forces the database to fetch the items immediately!
+        return session.query(OrderModel).options(joinedload(OrderModel.items)).order_by(OrderModel.created_at.desc()).all()
+
+def update_order_status(order_id: int, new_status: str):
+    """Update just the status of a specific order."""
+    with SessionLocal() as session:
+        # 1. Find the order
+        db_order = session.query(OrderModel).filter(OrderModel.id == order_id).first()
+        if not db_order:
+            return None
+        
+        # 2. Update and save it
+        db_order.status = new_status
+        session.commit()
+        
+        # 3. RE-FETCH it with the items loaded so FastAPI doesn't crash!
+        updated_order = session.query(OrderModel).options(joinedload(OrderModel.items)).filter(OrderModel.id == order_id).first()
+        return updated_order
 
 # Initialize ChromaDB connection
 logger.info("Connecting to persistent ChromaDB...")

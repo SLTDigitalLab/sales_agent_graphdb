@@ -40,10 +40,13 @@ class OrderCreate(BaseModel):
     items: List[OrderItemSchema]
 
 class OrderItemOut(BaseModel):
-    product_id: int
-    product_name: str
+    product_id: Optional[int] = None
+    sku: Optional[str] = None
     quantity: int
     unit_price: float
+
+    class Config:
+        from_attributes = True
 
 class OrderOut(BaseModel):
     id: int
@@ -55,7 +58,10 @@ class OrderOut(BaseModel):
 
     class Config:
         from_attributes = True
-    
+
+class OrderStatusUpdate(BaseModel):
+    status: str
+
     # --- Product Schemas ---
 class ProductBase(BaseModel):
     sku: str
