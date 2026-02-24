@@ -9,7 +9,8 @@ import {
   Menu,
   X,
   ShoppingBag,
-  ListOrdered
+  ListOrdered,
+  Users
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -22,7 +23,8 @@ export default function DashboardLayout() {
   const navItems = [
     { name: 'Overview', path: '/admin', icon: <LayoutDashboard size={20} /> },
     { name: 'Products', path: '/admin/products', icon: <ShoppingBag size={20} /> },
-    { name: 'Orders', path: '/admin/orders', icon: <ListOrdered size={20} /> }
+    { name: 'Orders', path: '/admin/orders', icon: <ListOrdered size={20} /> },
+    { name: 'Users', path: '/admin/customers', icon: <Users size={20} /> },
 
     // { name: 'Chat History', path: '/admin/chats', icon: <MessageSquare size={20} /> },
   ];
