@@ -33,11 +33,8 @@ export default function App() {
           <Route path="/register" element={<Register />} />
 
           {/* User Protected Chat */}
-          <Route path="/chat" element={
-            <ProtectedRoute>
-              <Chat />
-            </ProtectedRoute>
-          } />
+          {/* Public Chat (Guest accessible) */}
+          <Route path="/chat" element={<Chat />} />
 
           {/* Admin Auth */}
           <Route path="/admin/login" element={<AdminLogin/>} />

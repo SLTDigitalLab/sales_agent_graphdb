@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Bot, User, Loader2, AlertCircle, Plus, X, LogOut } from 'lucide-react';
+import { Send, Trash2, Bot, User, Loader2, AlertCircle, Plus, X, LogOut, LogIn } from 'lucide-react';
 import SEO from '../components/SEO';
 import ProductCanvas from '../components/ProductCanvas';
 import { useAuth } from '../context/AuthContext';
@@ -33,14 +33,17 @@ function Chat() {
     scrollToBottom();
   }, [messages]);
 
-  // --- DATA FETCHER (With Auth Token) ---
+  // --- DATA FETCHER (Optional Auth Token) ---
   const fetchProductDetails = async (productName) => {
     if (!productName) return;
 
     setCanvasLoading(true);
     try {
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const response = await fetch(`${API_BASE_URL}/products/search?query=${encodeURIComponent(productName)}`, {
-        headers: { 'Authorization': `Bearer ${token}` } // Keep Teammate's Auth
+        headers: headers
       });
 
       if (!response.ok) {
@@ -104,12 +107,12 @@ function Chat() {
     setCanvasLoading(true);
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const response = await fetch(`${API_BASE_URL}/v1/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: headers,
         body: JSON.stringify({
           session_id: sessionId,
           question: userMessage.content
@@ -153,12 +156,12 @@ function Chat() {
     setShowClearConfirm(false);
     setCanvasData(null);
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       await fetch(`${API_BASE_URL}/v1/chat/clear`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: headers,
         body: JSON.stringify({ session_id: sessionId })
       });
 
@@ -196,8 +199,11 @@ function Chat() {
     useEffect(() => {
       const fetchProductsForForm = async () => {
         try {
+          const headers = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+
           const response = await fetch(`${API_BASE_URL}/db/graph/products-for-order-form`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: headers
           });
           if (!response.ok) throw new Error(`Failed to fetch products: ${response.status}`);
           const data = await response.json();
@@ -267,12 +273,12 @@ function Chat() {
       };
 
       try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const response = await fetch(`${API_BASE_URL}/email/order-request`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers: headers,
           body: JSON.stringify(payload)
         });
 
@@ -442,9 +448,16 @@ function Chat() {
             <button onClick={requestClearHistory} disabled={messages.length === 0} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed group" title="Clear chat history">
               <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" /><span className="hidden sm:inline">Clear</span>
             </button>
-            <button onClick={logout} className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg font-medium hover:text-red-700 transition-colors">
-              <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Logout</span>
-            </button>
+            {/* DYNAMIC AUTH BUTTON */}
+            {token ? (
+              <button onClick={logout} className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg font-medium hover:text-red-700 transition-colors">
+                <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Logout</span>
+              </button>
+            ) : (
+              <button onClick={() => window.location.href = '/login'} className="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg font-medium hover:text-blue-700 transition-colors">
+                <LogIn className="w-4 h-4" /> <span className="hidden sm:inline">Log In</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -485,14 +498,22 @@ function Chat() {
                   {messages.map((message) => {
                     let contentToRender = message.content;
                     let orderFormSignal = null;
+                    let requireLoginSignal = false; // NEW FLAG
                     let requestId = null;
                     let prefillProduct = '';
 
-                    const orderFormMarkerMatch = message.content.match(/\[SHOW_ORDER_FORM:([^|\]]+)(?:\|([^\]]+))?\]/);
+                    // CATCH LOGIN SIGNAL
+                    if (contentToRender.includes('[REQUIRE_LOGIN]')) {
+                      requireLoginSignal = true;
+                      contentToRender = contentToRender.replace('[REQUIRE_LOGIN]', '').trim();
+                    }
+
+                    // CATCH ORDER FORM SIGNAL
+                    const orderFormMarkerMatch = contentToRender.match(/\[SHOW_ORDER_FORM:([^|\]]+)(?:\|([^\]]+))?\]/);
                     if (orderFormMarkerMatch) {
                       requestId = orderFormMarkerMatch[1];
                       prefillProduct = orderFormMarkerMatch[2] || '';
-                      contentToRender = message.content.replace(orderFormMarkerMatch[0], '').trim();
+                      contentToRender = contentToRender.replace(orderFormMarkerMatch[0], '').trim();
                       orderFormSignal = { type: 'order_form', request_id: requestId, message: contentToRender, prefill_product: prefillProduct };
                     }
 
@@ -505,6 +526,15 @@ function Chat() {
                             <>
                               {contentToRender && (<div className="text-sm leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: formatMessageContent(contentToRender) }} />)}
                               {requestId && (<InlineOrderForm requestId={requestId} prefillProduct={orderFormSignal.prefill_product} savedState={inlineFormStates[requestId]} onOrderSuccess={handleOrderSuccess} onSubmitError={(reqId, errorMsg) => console.error(errorMsg)} />)}
+                              
+                              {/* LOGIN PROMPT RENDERER */}
+                              {requireLoginSignal && (
+                                <div className="mt-4 pt-4 border-t border-slate-100">
+                                  <button onClick={() => window.location.href = '/login'} className="w-full px-4 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 text-sm font-semibold rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                    <LogIn className="w-4 h-4" /> Proceed to Login to Order
+                                  </button>
+                                </div>
+                              )}
                             </>
                           </div>
                           <span className="text-xs text-slate-400 mt-1.5 px-1 font-medium">{formatTime(message.timestamp)}</span>
