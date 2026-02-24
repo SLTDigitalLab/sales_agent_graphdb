@@ -6,8 +6,7 @@ from src.api.services.config_manager import load_config, save_config
 from src.api.services.scraper_runner import run_general_scraping, run_product_scraping
 from src.api.services import db_service, neo4j_service
 from src.api.deps import get_current_user, get_current_admin
-from src.api.schemas import ProductCreate, ProductUpdate, ProductOut
-
+from src.api.schemas import ProductCreate, ProductUpdate, ProductOut, OrderOut, OrderStatusUpdate, CustomerOut
 
 # IMPORT LOGGER
 from src.utils.logging_config import get_logger
@@ -279,3 +278,15 @@ async def update_order_status(order_id: int, update_data: OrderStatusUpdate):
     except Exception as e:
         logger.error(f"Failed to update order {order_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update order status")
+    
+# --- CUSTOMER MANAGEMENT ---
+
+@router.get("/customers", response_model=List[CustomerOut])
+async def get_all_customers():
+    """Fetch all customers for the admin dashboard."""
+    try:
+        customers = db_service.get_all_customers()
+        return customers
+    except Exception as e:
+        logger.error(f"Failed to fetch customers: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve customers")

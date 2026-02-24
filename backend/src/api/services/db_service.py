@@ -64,6 +64,16 @@ class OrderItemModel(Base):
     # Establish relationship back to order
     order = relationship("OrderModel", back_populates="items")
 
+# --- CUSTOMER MODEL ---
+class CustomerModel(Base):
+    __tablename__ = "customers"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    full_name = Column(String)
+    role = Column(String, default="customer")
+    created_at = Column(DateTime)
+
 # --- PRODUCT CRUD FUNCTIONS (SKU-BASED) ---
 
 def get_all_products():
@@ -133,6 +143,12 @@ def update_order_status(order_id: int, new_status: str):
         # 3. RE-FETCH it with the items loaded so FastAPI doesn't crash!
         updated_order = session.query(OrderModel).options(joinedload(OrderModel.items)).filter(OrderModel.id == order_id).first()
         return updated_order
+
+# --- CUSTOMER CRUD FUNCTIONS ---
+def get_all_customers():
+    """Fetch all registered customers/users."""
+    with SessionLocal() as session:
+        return session.query(CustomerModel).order_by(CustomerModel.created_at.desc()).all()
 
 # Initialize ChromaDB connection
 logger.info("Connecting to persistent ChromaDB...")
