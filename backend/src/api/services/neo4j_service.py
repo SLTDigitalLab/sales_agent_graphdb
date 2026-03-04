@@ -63,11 +63,16 @@ try:
     **Schema:**
     Node types: (:Product), (:Category)
     Properties: Product(name, price, url, sku, image_url), Category(name)
+    Relationships: (:Product)-[:IN_CATEGORY]->(:Category)
+    
     **Indexes:** 'product_name_index' on (:Product).name
+    
     **SEARCH RULES:**
-    1. Specific: `CALL db.index.fulltext.queryNodes("product_name_index", "term~") YIELD node AS p RETURN p.name, p.price, p.url LIMIT 10`
-    2. Broad: `MATCH (p:Product) RETURN p.name, p.price, p.url LIMIT 10`
-    3. Return Fields: Always return `p.name`, `p.price`, and `p.url`.
+    1. Specific Product Search: `CALL db.index.fulltext.queryNodes("product_name_index", "term~") YIELD node AS p RETURN p.name, p.price, p.url LIMIT 10`
+    2. Category Search: `MATCH (c:Category)<-[:IN_CATEGORY]-(p:Product) WHERE toLower(c.name) CONTAINS toLower("term") RETURN p.name, p.price, p.url LIMIT 10`
+    3. Broad Search: `MATCH (p:Product) RETURN p.name, p.price, p.url LIMIT 10`
+    4. Return Fields: Always return `p.name`, `p.price`, and `p.url`.
+    
     Q: "{question}"
     Cypher Query:
     """
