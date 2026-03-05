@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import uuid  # Added this import for SKU generation
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 from pydantic import BaseModel 
@@ -86,10 +87,16 @@ def get_product_by_sku(sku: str):
     with SessionLocal() as session:
         return session.query(ProductModel).filter(ProductModel.sku == sku).first()
 
-def create_product(product_data: ProductCreate):
-    """Add a new product to PostgreSQL."""
+def create_product_in_db(product_data: ProductCreate):
+    """Add a new product to PostgreSQL with an auto-generated SKU."""
     with SessionLocal() as session:
-        db_product = ProductModel(**product_data.dict())
+        product_dict = product_data.dict()
+        
+        # Generate a unique SKU (e.g., GEN-E8E9C823)
+        generated_sku = f"GEN-{uuid.uuid4().hex[:8].upper()}"
+        product_dict["sku"] = generated_sku
+        
+        db_product = ProductModel(**product_dict)
         session.add(db_product)
         session.commit()
         session.refresh(db_product)

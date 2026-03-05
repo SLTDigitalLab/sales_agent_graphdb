@@ -247,19 +247,15 @@ export default function Products() {
             </div>
             <form onSubmit={handleAddProduct} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">SKU Code*</label>
-                  <input required className="w-full mt-1 p-2 border rounded" value={newProduct.sku} onChange={e => setNewProduct({...newProduct, sku: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Category</label>
-                  <input required className="w-full mt-1 p-2 border rounded" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} />
-                </div>
-              </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase">Product Name*</label>
                 <input required className="w-full mt-1 p-2 border rounded" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
               </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase">Category</label>
+                <input required className="w-full mt-1 p-2 border rounded" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} />
+              </div>
+            </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase">Price (Rs)*</label>

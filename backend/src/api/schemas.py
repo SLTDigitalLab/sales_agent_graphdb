@@ -62,9 +62,10 @@ class OrderOut(BaseModel):
 class OrderStatusUpdate(BaseModel):
     status: str
 
-    # --- Product Schemas ---
+# --- Product Schemas ---
+
+# 1. Base contains fields common to everything EXCEPT sku (since we generate it later)
 class ProductBase(BaseModel):
-    sku: str
     name: str
     category: Optional[str] = None
     description: Optional[str] = None
@@ -72,11 +73,12 @@ class ProductBase(BaseModel):
     stock_quantity: int = 0
     image_url: Optional[str] = None
 
+# 2. Creation schema doesn't need anything extra
 class ProductCreate(ProductBase):
     pass  
 
+# 3. Update schema remains all optional
 class ProductUpdate(BaseModel):
-    # All fields optional so you can update just the price or just the stock
     sku: Optional[str] = None
     name: Optional[str] = None
     category: Optional[str] = None
@@ -85,8 +87,10 @@ class ProductUpdate(BaseModel):
     stock_quantity: Optional[int] = None
     image_url: Optional[str] = None
 
+# 4. Out schema ADDS the sku and id because the database will return them
 class ProductOut(ProductBase):
     id: int
+    sku: str  # Add sku here so the frontend still receives it!
 
     class Config:
         from_attributes = True
