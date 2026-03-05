@@ -9,16 +9,14 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 
 # --- 1. SETUP PATHS ---
-# Docker path: /app/scrapers/product_scraper.py
-# We want: /app/data/products.csv
-script_dir = os.path.dirname(os.path.abspath(__file__)) # /app/scrapers
-project_root = os.path.dirname(script_dir)              # /app
+script_dir = os.path.dirname(os.path.abspath(__file__)) 
+project_root = os.path.dirname(script_dir)              
 
-# Ensure /app/data exists
 DATA_DIR = os.path.join(project_root, 'data')
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
@@ -51,9 +49,20 @@ def setup_driver():
     return webdriver.Chrome(service=service, options=chrome_options)
 
 def clean_price(price_str):
+    """Extracts the last numeric price found in a string (ignores old prices)."""
     if not price_str: return 0.0
-    # Remove "Rs.", "LKR", commas, spaces, newlines. Keep digits and dots.
-    clean = re.sub(r'[^\d.]', '', str(price_str))
+    
+    # Find all numeric patterns (e.g., 12,890.00 or 5000)
+    prices = re.findall(r'[\d,.]+\d', str(price_str))
+    
+    if not prices:
+        return 0.0
+        
+    # Take the LAST price found 
+    last_price = prices[-1]
+    
+    # Remove commas/non-numeric chars and convert to float
+    clean = re.sub(r'[^\d.]', '', last_price)
     try:
         return float(clean)
     except ValueError:
@@ -104,8 +113,13 @@ def get_product_links(driver, category_url):
 def extract_details(driver, url, category_name):
     try:
         driver.get(url)
-        # Wait slightly longer for dynamic content
-        time.sleep(1.5) 
+        
+        try:
+            WebDriverWait(driver, 10).until(
+                lambda d: len(d.find_element(By.CSS_SELECTOR, ".field--name-price").text.strip()) > 2
+            )
+        except Exception:
+            time.sleep(1) # Final fallback wait if condition fails
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
@@ -115,46 +129,46 @@ def extract_details(driver, url, category_name):
         if product_name == "Unknown":
             product_name = url.split('/product/')[-1].replace('-', ' ').title()
 
-        # 2. SKU
+        # 2. SKU (Hashed by name to prevent duplicates)
         sku = ""
         sku_tag = soup.find('span', class_='sku')
         if sku_tag: sku = sku_tag.text.strip()
         if not sku: 
-            hash_object = hashlib.md5(url.encode())
+            hash_object = hashlib.md5(product_name.lower().encode())
             sku = f"GEN-{hash_object.hexdigest()[:8].upper()}"
 
-        # 3. Price (IMPROVED LOGIC)
+        # 3. Price using precise selectors
         price = 0.0
         
-        # Strategy A: Look for the specific price class (Standard)
-        price_tag = soup.select_one('.product-price .field--name-price') 
-        if not price_tag:
-            price_tag = soup.select_one('.price') # Fallback class
-            
-        if price_tag:
-            price = clean_price(price_tag.get_text())
+        # Using selector 
+        current_price_tag = soup.select_one('.field--name-price')
+        if current_price_tag:
+            price = clean_price(current_price_tag.get_text())
 
-        # Strategy B: Search for "Rs." text if Strategy A failed
+        # Fallback 1: custom m-price-details logic
         if price == 0.0:
-            # Find all text elements containing "Rs."
+            price_area = soup.select_one('.m-price-details')
+            if price_area:
+                h4_tag = price_area.select_one('h4.strong')
+                if h4_tag:
+                    price = clean_price(h4_tag.get_text())
+
+        # Final Fallback Strategy: Search for "Rs." explicitly ignoring old prices
+        if price == 0.0:
             candidates = soup.find_all(string=re.compile(r'Rs\.'))
             for cand in candidates:
-                # Get the parent text (e.g., "Rs. 25,000")
-                text = cand.parent.get_text().strip()
-                # If it looks like a price (short, has digits)
-                if len(text) < 30 and any(char.isdigit() for char in text):
+                parent = cand.parent
+                # Skip strikethrough classes
+                if parent and ('line-through' in parent.get('class', []) or 'old-price' in parent.get('class', [])):
+                    continue
+                
+                text = parent.get_text().strip()
+                if any(char.isdigit() for char in text) and len(text) < 50:
                     found_price = clean_price(text)
                     if found_price > 0:
                         price = found_price
                         break
 
-        # Strategy C: Meta tag fallback
-        if price == 0.0:
-            meta_price = soup.find("meta", property="product:price:amount")
-            if meta_price:
-                price = clean_price(meta_price.get("content"))
-
-        # Log warning if still 0 (Helpful for debugging)
         if price == 0.0:
             logger.warning(f"⚠️ Could not find price for {product_name} ({url})")
 
@@ -205,26 +219,22 @@ def extract_details(driver, url, category_name):
         return None
 
 def save_to_csv(data_list):
-    """Saves the scraped data to a CSV file."""
     if not data_list: return
-
     fieldnames = ["sku", "product_name", "price", "category_name", "url", "image_url", "description"]
-    
     try:
         logger.info(f"Saving CSV to: {CSV_PATH}")
         with open(CSV_PATH, mode='w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(data_list)
-            
-        logger.info(f"CSV Saved: {len(data_list)} products written.")
+        logger.info(f"CSV Saved: {len(data_list)} unique products written.")
     except Exception as e:
         logger.error(f"Failed to save CSV: {e}")
 
 def scrape_catalog(custom_start_urls=None):
     logger.info("Starting Scraper (CSV Mode)...")
     driver = setup_driver()
-    all_products = []
+    all_products = {} 
     visited_urls = set()
 
     try:
@@ -242,18 +252,18 @@ def scrape_catalog(custom_start_urls=None):
                     visited_urls.add(link)
                     product_tasks.append((link, cat_name))
 
-        logger.info(f"Found {len(product_tasks)} unique products.")
+        logger.info(f"Found {len(product_tasks)} total product links.")
         
         for i, (link, cat_name) in enumerate(product_tasks):
             if i % 10 == 0: logger.info(f"Scraping [{i+1}/{len(product_tasks)}]")
             data = extract_details(driver, link, cat_name)
             if data:
-                all_products.append(data)
+                all_products[data['sku']] = data 
 
-        # FINAL SAVE
-        save_to_csv(all_products)
+        unique_products_list = list(all_products.values())
+        save_to_csv(unique_products_list)
         logger.info("Scraping Complete. Data saved to products.csv")
-        return all_products
+        return unique_products_list
 
     except Exception as e:
         logger.error(f"Critical Error: {e}", exc_info=True)

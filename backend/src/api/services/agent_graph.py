@@ -277,17 +277,24 @@ User Question: {question}
 general_prompt = ChatPromptTemplate.from_template(GENERAL_CONVERSATION_TEMPLATE)
 general_chain = general_prompt | llm | StrOutputParser()
 
-# --- UPDATED SYNTHESIS PROMPT (FIX DOUBLE FORM) ---
+# --- UPDATED SYNTHESIS PROMPT ---
 SYNTHESIS_PROMPT_TEMPLATE = """
-You are a helpful AI assistant for SLT-MOBITEL. Answer based ONLY on context.
+You are a helpful AI sales assistant for SLT-MOBITEL. 
 
-**CRITICAL INSTRUCTION:** If the context contains an "order_form" signal, simply reply with a polite confirmation message (e.g., "Sure, I can help with that.").
-**DO NOT** generate the tag [SHOW_ORDER_FORM:...] in your output text. The system will add it automatically.
+You have been provided with 'Intermediate Steps Context' which contains the data retrieved from the database. 
+Your job is to relay this information to the user naturally, clearly, and accurately.
+
+**CRITICAL RULES:**
+1. **Present the Data:** If the Context contains a list of products, format them nicely with bullet points. Include the product name, the price (Rs.), and format the URL as a markdown link.
+2. **Order Form Signal:** ONLY if the Context contains the exact word 'order_form', you should reply with: "I can help you place an order for that. Please confirm the details below."
+3. **No Inventions:** Do NOT make up products, prices, or URLs. Rely ONLY on the provided context.
 
 Chat History:
 {chat_history}
+
 Intermediate Steps Context:
 {intermediate_steps}
+
 User's Latest Question: {question}
 Final Answer:
 """

@@ -69,7 +69,8 @@ try:
     
     **SEARCH RULES:**
     1. Specific Product Search: `CALL db.index.fulltext.queryNodes("product_name_index", "term~") YIELD node AS p RETURN p.name, p.price, p.url LIMIT 10`
-    2. Category Search: `MATCH (c:Category)<-[:IN_CATEGORY]-(p:Product) WHERE toLower(c.name) CONTAINS toLower("term") RETURN p.name, p.price, p.url LIMIT 10`
+    2. Category Search: `MATCH (c:Category)<-[:IN_CATEGORY]-(p:Product) WHERE toLower(c.name) CONTAINS toLower("core_keyword") RETURN p.name, p.price, p.url LIMIT 10`
+       *CRITICAL RULE:* For category searches, extract ONLY the core category noun. Do NOT use literal long phrases. (e.g., Use "smart home" instead of "smart home devices", use "router" instead of "routers").
     3. Broad Search: `MATCH (p:Product) RETURN p.name, p.price, p.url LIMIT 10`
     4. Return Fields: Always return `p.name`, `p.price`, and `p.url`.
     
