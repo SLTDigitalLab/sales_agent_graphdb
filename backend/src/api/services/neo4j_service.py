@@ -132,11 +132,11 @@ class Neo4jIngestor:
                 for row in reader:
                     try:
                         params = {
-                            "category": row.get('category_name', 'Uncategorized'),
+                            "category": row.get('category', 'Uncategorized'), 
                             "sku": row['sku'],
-                            "name": row['product_name'],
+                            "name": row['name'],
                             "price": float(row.get('price', 0)),
-                            "url": row.get('url', ''),
+                            "url": row.get('product_url', ''), 
                             "image_url": row.get('image_url', '')
                         }
                         session.run(ingest_query, **params)
@@ -169,13 +169,13 @@ def seed_sql_db(file_path):
             for row in reader:
                 product = Product(
                     sku=row['sku'],
-                    name=row['product_name'],
+                    name=row['name'], 
                     price=float(row.get('price', 0)),
-                    category=row.get('category_name'),
-                    product_url=row.get('url'),
+                    category=row.get('category'), 
+                    product_url=row.get('product_url'),
                     image_url=row.get('image_url'),
                     description=row.get('description'),
-                    stock_quantity=50 # Default stock
+                    stock_quantity=int(row.get('stock_quantity', 50)) 
                 )
                 db.add(product)
                 count += 1
