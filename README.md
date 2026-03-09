@@ -1,10 +1,31 @@
 # AI-Enterprise-Agent
 
-AI-powered enterprise assistant for knowledge and product intelligence. It combines a Neo4j graph database for structured product data with a Chroma DB vector store for unstructured web content, all orchestrated by a LangGraph agent.
+An intelligent e-commerce ecosystem powered by a LangGraph agent. It synchronizes Neo4j (product hierarchies), Chroma DB (multi-channel web context), and PostgreSQL (business operations) to deliver automated product intelligence and guided ordering.
+
+✨ Core Features
+1. Data Intelligence & Ingestion
+Multi-Source Scraper: Automated extraction of product specs from target websites.
+Knowledge Graph (Neo4j): Structured ingestion of product relationships and hierarchies.
+Social RAG (Chroma DB): Vector indexing of Web, LinkedIn, and TikTok content for company context.
+
+2. Conversational E-Commerce
+Product Discovery: AI-driven queries for product details and comparisons.
+Company Insights: Real-time answers regarding company background and social presence.
+Guided Ordering: Seamless chat-to-order flow with automated intent detection.
+
+3. Order & User Management
+Secure Auth: Integrated registration and sign-in system for customers.
+Relational Storage (PostgreSQL): Management of users, inventory, and order history.
+Smart Notifications: Dual-email triggers for both customer and company upon order.
+
+4. Admin Command Center
+Inventory CRUD: Tools to add, update, or delete products in the catalog.
+Order Oversight: Centralized dashboard to monitor all incoming customer orders.
+Status Control: Live tracking and updating of order progress (e.g., Pending to Shipped).
 
 ---
 
-## 🚀 Option 1: Docker 
+## 🚀 Option 1: Docker (Recommended)
 
 This is the easiest way to run the application. It guarantees the environment works exactly as intended without installing dependencies locally.
 
