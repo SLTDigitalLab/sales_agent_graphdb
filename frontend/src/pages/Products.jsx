@@ -88,7 +88,11 @@ export default function Products() {
   };
 
   const openEditModal = (product) => {
-    setEditProduct({ ...product });
+    setEditProduct({ ...product,
+      description: product.description || '',
+      image_url: product.image_url || '',
+      product_url: product.product_url || ''
+     });
     setIsEditModalOpen(true);
   };
 
@@ -277,36 +281,91 @@ export default function Products() {
       {/* --- EDIT PRODUCT MODAL --- */}
       {isEditModalOpen && editProduct && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
-            <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
+          {/* Changed max-w-lg to max-w-2xl and added max-h-[90vh] overflow-y-auto for scrollability */}
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in duration-200">
+            <div className="bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-10">
               <h3 className="font-bold flex items-center gap-2"><Edit3 size={18}/> Edit Product</h3>
               <button onClick={() => setIsEditModalOpen(false)}><X size={20}/></button>
             </div>
-            <form onSubmit={handleEditProduct} className="p-6 space-y-4">
-              <div className="bg-gray-50 p-3 rounded border border-gray-200 mb-4">
-                <span className="text-xs font-bold text-gray-500 uppercase block">Editing SKU</span>
-                <span className="font-mono font-bold text-blue-700">{editProduct.sku}</span>
-              </div>
+            
+            <form onSubmit={handleEditProduct} className="p-6 space-y-6">
               
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase">Product Name</label>
-                <input required className="w-full mt-1 p-2 border rounded" value={editProduct.name} onChange={e => setEditProduct({...editProduct, name: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase">Category</label>
-                <input required className="w-full mt-1 p-2 border rounded" value={editProduct.category} onChange={e => setEditProduct({...editProduct, category: e.target.value})} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Price (Rs)</label>
-                  <input required type="number" className="w-full mt-1 p-2 border rounded" value={editProduct.price} onChange={e => setEditProduct({...editProduct, price: parseFloat(e.target.value)})} />
+              {/* Basic Info Section */}
+              <div className="space-y-4">
+                <div className="bg-gray-50 p-3 rounded border border-gray-200 mb-4 flex justify-between items-center">
+                  <div>
+                    <span className="text-xs font-bold text-gray-500 uppercase block">Editing SKU</span>
+                    <span className="font-mono font-bold text-blue-700">{editProduct.sku}</span>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Stock Qty</label>
-                  <input required type="number" className="w-full mt-1 p-2 border rounded" value={editProduct.stock_quantity} onChange={e => setEditProduct({...editProduct, stock_quantity: parseInt(e.target.value)})} />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Product Name*</label>
+                    <input required className="w-full mt-1 p-2 border rounded" value={editProduct.name} onChange={e => setEditProduct({...editProduct, name: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Category*</label>
+                    <input required className="w-full mt-1 p-2 border rounded" value={editProduct.category} onChange={e => setEditProduct({...editProduct, category: e.target.value})} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Price (Rs)*</label>
+                    <input required type="number" className="w-full mt-1 p-2 border rounded" value={editProduct.price} onChange={e => setEditProduct({...editProduct, price: parseFloat(e.target.value)})} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Stock Qty*</label>
+                    <input required type="number" className="w-full mt-1 p-2 border rounded" value={editProduct.stock_quantity} onChange={e => setEditProduct({...editProduct, stock_quantity: parseInt(e.target.value)})} />
+                  </div>
                 </div>
               </div>
-              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50">
+
+              {/* NEW: Optional Details Section */}
+              <div className="border-t border-gray-200 pt-6">
+                <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+                  Optional Product Details
+                </h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Description</label>
+                    <textarea 
+                      className="w-full mt-1 p-2 border rounded resize-y" 
+                      rows="3"
+                      placeholder="Add product description..."
+                      value={editProduct.description} 
+                      onChange={e => setEditProduct({...editProduct, description: e.target.value})} 
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase">Image URL</label>
+                      <input 
+                        type="url" 
+                        className="w-full mt-1 p-2 border rounded" 
+                        placeholder="https://..."
+                        value={editProduct.image_url} 
+                        onChange={e => setEditProduct({...editProduct, image_url: e.target.value})} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase">Product URL</label>
+                      <input 
+                        type="url" 
+                        className="w-full mt-1 p-2 border rounded" 
+                        placeholder="https://..."
+                        value={editProduct.product_url} 
+                        onChange={e => setEditProduct({...editProduct, product_url: e.target.value})} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 mt-4">
                 <Save size={18}/> {loading ? 'Updating...' : 'Update Product & Sync AI'}
               </button>
             </form>

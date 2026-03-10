@@ -38,6 +38,7 @@ class ProductModel(Base):
     price = Column(Float, default=0.0)
     stock_quantity = Column(Integer, default=0)
     image_url = Column(String)
+    product_url = Column(String)
 
 # ---ORDER MODELS ---
 class OrderModel(Base):

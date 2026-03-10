@@ -72,6 +72,7 @@ class ProductBase(BaseModel):
     price: float = 0.0
     stock_quantity: int = 0
     image_url: Optional[str] = None
+    product_url: Optional[str] = None
 
 # 2. Creation schema doesn't need anything extra
 class ProductCreate(ProductBase):
@@ -86,6 +87,7 @@ class ProductUpdate(BaseModel):
     price: Optional[float] = None
     stock_quantity: Optional[int] = None
     image_url: Optional[str] = None
+    product_url: Optional[str] = None
 
 # 4. Out schema ADDS the sku and id because the database will return them
 class ProductOut(ProductBase):
