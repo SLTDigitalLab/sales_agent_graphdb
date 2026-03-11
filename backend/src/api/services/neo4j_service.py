@@ -147,41 +147,55 @@ class Neo4jIngestor:
 
 def seed_sql_db(file_path):
     """
-    Wipes and Reseeds the PostgreSQL Database from the CSV.
-    Uses TRUNCATE ... RESTART IDENTITY to reset IDs to 1.
+    Updates and Seeds the PostgreSQL Database from the CSV.
+    Uses an UPSERT approach to preserve existing Orders and Order Items.
     """
-    logger.info("SQL: Starting Wipe & Reseed...")
+    logger.info("SQL: Starting Upsert from CSV...")
     if not os.path.exists(file_path):
         logger.error(f"SQL: CSV file missing at {file_path}")
         return 0
 
     db = SessionLocal()
     try:
-        # 1. Wipe Data (Cascade deletes orders)
-        logger.info("SQL: Truncating tables...")
-        db.execute(text("TRUNCATE TABLE order_items, orders, products RESTART IDENTITY CASCADE"))
+        # REMOVED the TRUNCATE command so Orders are safe!
         
-        # 2. Seed Data
-        logger.info("SQL: Seeding from CSV...")
+        logger.info("SQL: Seeding/Updating from CSV...")
         count = 0
         with open(file_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                product = Product(
-                    sku=row['sku'],
-                    name=row['name'], 
-                    price=float(row.get('price', 0)),
-                    category=row.get('category'), 
-                    product_url=row.get('product_url'),
-                    image_url=row.get('image_url'),
-                    description=row.get('description'),
-                    stock_quantity=int(row.get('stock_quantity', 50)) 
-                )
-                db.add(product)
+                sku = row['sku']
+                
+                # 1. Check if the product already exists in the database
+                existing_product = db.query(Product).filter(Product.sku == sku).first()
+                
+                if existing_product:
+                    # 2. If it exists, just update its details
+                    existing_product.name = row['name']
+                    existing_product.price = float(row.get('price', 0))
+                    existing_product.category = row.get('category')
+                    existing_product.product_url = row.get('product_url')
+                    existing_product.image_url = row.get('image_url')
+                    existing_product.description = row.get('description')
+                    existing_product.stock_quantity = int(row.get('stock_quantity', 50))
+                else:
+                    # 3. If it does not exist, insert it as a new product
+                    new_product = Product(
+                        sku=sku,
+                        name=row['name'], 
+                        price=float(row.get('price', 0)),
+                        category=row.get('category'), 
+                        product_url=row.get('product_url'),
+                        image_url=row.get('image_url'),
+                        description=row.get('description'),
+                        stock_quantity=int(row.get('stock_quantity', 50)) 
+                    )
+                    db.add(new_product)
+                    
                 count += 1
         
         db.commit()
-        logger.info(f"SQL: Successfully seeded {count} products.")
+        logger.info(f"SQL: Successfully upserted {count} products. Orders preserved.")
         return count
     except Exception as e:
         db.rollback()
