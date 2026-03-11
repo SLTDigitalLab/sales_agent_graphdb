@@ -32,7 +32,13 @@ export default function Orders() {
     };
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
-      if (res.status === 401) { logout(); return null; }
+      
+      // FIX: Notice we added "|| res.status === 403" right here!
+      if (res.status === 401 || res.status === 403) { 
+        alert("Your session has expired for security reasons. Please log in again.");
+        logout(); // This clears the dead token and kicks you to the login screen
+        return null; 
+      }
       return res;
     } catch (error) {
       console.error(error);
