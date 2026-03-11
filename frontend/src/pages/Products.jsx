@@ -44,7 +44,13 @@ export default function Products() {
     };
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
-      if (res.status === 401) { logout(); return null; }
+      
+      // FIX 1: Catch both 401 and 403, alert the user, and log them out
+      if (res.status === 401 || res.status === 403) { 
+        alert("Your session has expired for security reasons. Please log in again.");
+        logout(); 
+        return null; 
+      }
       return res;
     } catch (error) {
       console.error(error);
@@ -58,8 +64,10 @@ export default function Products() {
     if (res && res.ok) {
       const data = await res.json();
       setProducts(data);
-    } else {
-      const errorStatus = res ? res.status : 'Network Error';
+    } else if (res) { 
+      // FIX 2: We use "else if (res)" so it doesn't show a red error banner 
+      // when it is already kicking the user back to the login screen!
+      const errorStatus = res.status;
       setStatusMsg({ text: `Failed to load catalog. Error Code: ${errorStatus}`, type: 'error' });
     }
     setLoading(false);
