@@ -1,7 +1,7 @@
 import os
 import json
 import asyncio
-import uuid  # Added this import for SKU generation
+import uuid 
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 from pydantic import BaseModel 
@@ -131,24 +131,51 @@ def delete_product_from_db_by_sku(sku: str):
 def get_all_orders():
     """Fetch all orders, including their nested items."""
     with SessionLocal() as session:
-        # joinedload forces the database to fetch the items immediately!
         return session.query(OrderModel).options(joinedload(OrderModel.items)).order_by(OrderModel.created_at.desc()).all()
 
 def update_order_status(order_id: int, new_status: str):
     """Update just the status of a specific order."""
     with SessionLocal() as session:
-        # 1. Find the order
         db_order = session.query(OrderModel).filter(OrderModel.id == order_id).first()
         if not db_order:
             return None
         
-        # 2. Update and save it
         db_order.status = new_status
         session.commit()
         
-        # 3. RE-FETCH it with the items loaded so FastAPI doesn't crash!
         updated_order = session.query(OrderModel).options(joinedload(OrderModel.items)).filter(OrderModel.id == order_id).first()
         return updated_order
+
+def get_user_orders(user_id: int):
+    """Fetch all orders for a specific user, including their nested items."""
+    with SessionLocal() as session:
+        return session.query(OrderModel)\
+            .options(joinedload(OrderModel.items))\
+            .filter(OrderModel.customer_id == user_id)\
+            .order_by(OrderModel.created_at.desc())\
+            .all()        
+
+def cancel_user_order(user_id: int, order_id: int) -> Dict[str, Any]:
+    """
+    Securely cancels a specific order for a user.
+    Only allows cancellation if the order belongs to the user AND is Pending/Processing.
+    """
+    with SessionLocal() as session:
+        db_order = session.query(OrderModel).filter(
+            OrderModel.id == order_id,
+            OrderModel.customer_id == user_id
+        ).first()
+
+        if not db_order:
+            return {"success": False, "message": "Order not found or you do not have permission to modify it."}
+        
+        if db_order.status.upper() not in ['PENDING', 'PROCESSING']:
+            return {"success": False, "message": f"Order #{order_id} cannot be cancelled because its status is '{db_order.status}'."}
+
+        db_order.status = "CANCELLED"
+        session.commit()
+        
+        return {"success": True, "message": f"Order #{order_id} has been successfully cancelled."}            
 
 # --- CUSTOMER CRUD FUNCTIONS ---
 def get_all_customers():

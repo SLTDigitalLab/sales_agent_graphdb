@@ -13,6 +13,7 @@ from src.utils.logging_config import get_logger
 
 # IMPORT TOOLS
 from src.api.services.tools import check_stock_tool
+from src.api.services.db_service import get_user_orders, cancel_user_order, get_product_by_sku
 
 logger = get_logger(__name__)
 
@@ -23,7 +24,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 # Initialize LLM 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-# --- Agent State ---
+# Agent State
 class AgentState(TypedDict):
     question: str 
     original_question: str
@@ -148,11 +149,29 @@ User's input: {question}
 extraction_prompt = ChatPromptTemplate.from_template(EXTRACTION_PROMPT)
 extraction_chain = extraction_prompt | llm | StrOutputParser()
 
-# --- SMART ORDER NODE ---
+# --- ORDER ID EXTRACTION ---
+CANCEL_EXTRACTION_PROMPT = """
+Based on the chat history and the user's RAW input, extract the specific Order ID (a number) the user wants to cancel.
+
+CRITICAL RULES:
+1. ONLY return a number if the user explicitly typed the digit in their input (e.g., "cancel order 4").
+2. If the user is replying with a confirmation (e.g., "yes", "do it", "confirm") to your previous message asking to confirm a specific Order ID, return THAT Order ID.
+3. DO NOT guess or infer the Order ID based on product names. 
+4. If there is no explicit number and no explicit confirmation to a previous prompt, return "None".
+Return ONLY the number or "None".
+
+Chat History:
+{chat_history}
+
+User Input: {question}
+"""
+cancel_extraction_prompt = ChatPromptTemplate.from_template(CANCEL_EXTRACTION_PROMPT)
+cancel_extraction_chain = cancel_extraction_prompt | llm | StrOutputParser()
+
+# --- SMART ORDERING NODE ---
 def prepare_order_form_response(state: AgentState) -> AgentState:
     logger.info("---NODE: prepare_order_form_response---")
     
-    # 1. PERMISSION CHECK
     user_id = state.get("user_id")
     if not user_id:
         logger.warning("Order attempted without user_id. Blocking.")
@@ -167,7 +186,6 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
     chat_history = state.get("chat_history", [])
     intermediate_steps = state.get("intermediate_steps", [])
 
-    # 2. EXTRACT PRODUCT
     product_context = "None"
     try:
         history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history[-6:]])
@@ -178,7 +196,6 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
         logger.error(f"Error extracting product context: {e}", exc_info=True)
         product_context = ""
 
-    # 3. SAFETY: If no product extracted, DO NOT show form. Ask for clarification.
     if not product_context:
         logger.warning("Could not extract specific product for order.")
         return {
@@ -188,12 +205,10 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
             }]
         }
 
-    # 4. STOCK CHECK (Smart Agent)
-    # We now have a product name, so we check stock.
+    # STOCK CHECK 
     stock_status = check_stock_tool.invoke(product_context)
-    logger.info(f"DEBUG: Stock Tool Output for '{product_context}': {stock_status}") # <--- DEBUG LOG
+    logger.info(f"DEBUG: Stock Tool Output for '{product_context}': {stock_status}") 
     
-    # Check for failure keywords from tools.py
     if "UNAVAILABLE" in stock_status or "Error" in stock_status or "not found" in stock_status.lower():
             logger.info(f"Stock check failed: {stock_status}")
             
@@ -208,13 +223,9 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
             }]
             }
     
-    # 5. SUCCESS SIGNAL
-    # Use the product name from the Stock Tool if possible (it corrects the name), otherwise use extracted.
-    # The stock tool output format is "AVAILABLE: Product 'Exact Name'..."
     final_product_name = product_context
     if "Product '" in stock_status:
         try:
-            # Extract distinct name from tool output: "Product 'Name' (ID..."
             start = stock_status.find("Product '") + 9
             end = stock_status.find("'", start)
             if start > 8 and end > start:
@@ -241,7 +252,9 @@ Routes:
 1. 'graph_db': Product details, prices, availability, or general shopping ("Show me routers").
 2. 'vector_db': Services, contact info, procedures.
 3. 'order_form': ONLY when user explicitly wants to BUY/ORDER a SPECIFIC item found in context.
-4. 'general': Greetings, small talk.
+4. 'check_order_status': ONLY when the user asks about the status of their existing/past orders, tracking, or purchases.
+5. 'cancel_order': ONLY when the user explicitly asks to cancel an order.
+6. 'general': Greetings, small talk.
 
 User Question: {question}
 """
@@ -260,7 +273,107 @@ def route_query(state: AgentState) -> AgentState:
     if route_decision == "graph_db": return {"route": "neo4j", "intermediate_steps": []}
     elif route_decision == "vector_db": return {"route": "vector", "intermediate_steps": []}
     elif route_decision == "order_form": return {"route": "order_form", "intermediate_steps": []} 
+    elif route_decision == "check_order_status": return {"route": "check_order_status", "intermediate_steps": []}
+    elif route_decision == "cancel_order": return {"route": "cancel_order", "intermediate_steps": []}
     else: return {"route": "general", "intermediate_steps": []}
+
+# --- ORDER STATUS NODE ---
+def check_order_status_node(state: AgentState) -> AgentState:
+    logger.info("---NODE: check_order_status_node---")
+    user_id = state.get("user_id")
+    intermediate_steps = state.get("intermediate_steps", [])
+
+    if not user_id:
+        logger.warning("Order status check attempted without user_id.")
+        return {
+            "intermediate_steps": intermediate_steps + [{
+                "type": "auth_error", 
+                "message": "You must be logged in to check your order history or status."
+            }]
+        }
+
+    try:
+        orders = get_user_orders(user_id)
+        
+        if not orders:
+            return {
+                "intermediate_steps": intermediate_steps + [{
+                    "type": "order_status_context",
+                    "context": "The user has no past orders in their account."
+                }]
+            }
+        
+        order_details = []
+        for order in orders:
+            item_strings = []
+            for item in order.items:
+                product = get_product_by_sku(item.sku)
+                product_name = product.name if product else item.sku
+                item_strings.append(f"{item.quantity}x {product_name}")
+            
+            items_str = ", ".join(item_strings)
+            date_str = order.created_at.strftime('%Y-%m-%d') if order.created_at else "Unknown Date"
+            order_details.append(f"- Order #{order.id} | Status: {order.status} | Total: Rs.{order.total_amount:,.2f} | Date: {date_str} | Items: {items_str}")
+        
+        formatted_orders = "\n".join(order_details)
+        
+        return {
+            "intermediate_steps": intermediate_steps + [{
+                "type": "order_status_context",
+                "context": f"Here is the user's order history. Read this to them nicely:\n{formatted_orders}"
+            }]
+        }
+    except Exception as e:
+        logger.error(f"Error fetching user orders: {e}", exc_info=True)
+        return {
+            "intermediate_steps": intermediate_steps + [{
+                "type": "error",
+                "message": "I encountered a system error while trying to retrieve your orders. Please try again later."
+            }]
+        }
+
+# --- CANCEL ORDER NODE ---
+def cancel_order_node(state: AgentState) -> AgentState:
+    logger.info("---NODE: cancel_order_node---")
+    user_id = state.get("user_id")
+    intermediate_steps = state.get("intermediate_steps", [])
+    
+    raw_question = state.get("original_question", state["question"])
+    chat_history = state.get("chat_history", [])
+
+    if not user_id:
+        return {"intermediate_steps": intermediate_steps + [{"type": "auth_error", "message": "You must be logged in to cancel an order."}]}
+
+    orders = get_user_orders(user_id)
+    eligible_orders = [o for o in orders if o.status.upper() in ['PENDING', 'PROCESSING']]
+
+    if not eligible_orders:
+        return {"intermediate_steps": intermediate_steps + [{"type": "cancel_context", "context": "Tell the user they have no orders eligible for cancellation. Orders can only be cancelled if they are Pending or Processing."}]}
+
+    history_str = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history[-6:]])
+    extracted_id_str = cancel_extraction_chain.invoke({"chat_history": history_str, "question": raw_question}).strip()
+    
+    target_order_id = None
+    if extracted_id_str.isdigit():
+        target_order_id = int(extracted_id_str)
+
+    if not target_order_id:
+        if len(eligible_orders) == 1:
+            # Ask for confirmation for eligible order
+            o = eligible_orders[0]
+            return {"intermediate_steps": intermediate_steps + [{"type": "cancel_context", "context": f"Tell the user they have one eligible order to cancel: Order #{o.id} ({o.status}). Ask them explicitly if they want to proceed with canceling Order #{o.id}."}]}
+        else:
+            options = ", ".join([f"#{o.id} ({o.status})" for o in eligible_orders])
+            return {"intermediate_steps": intermediate_steps + [{"type": "cancel_context", "context": f"Tell the user they have multiple eligible orders: {options}. Ask them which specific Order ID they want to cancel."}]}
+    
+    db_result = cancel_user_order(user_id, target_order_id)
+    
+    return {
+        "intermediate_steps": intermediate_steps + [{
+            "type": "cancel_context", 
+            "context": f"System action result: {db_result['message']}. Relay this clearly to the user."
+        }]
+    }
 
 # --- SYNTHESIS & GENERATION ---
 GENERAL_CONVERSATION_TEMPLATE = """
@@ -277,7 +390,7 @@ User Question: {question}
 general_prompt = ChatPromptTemplate.from_template(GENERAL_CONVERSATION_TEMPLATE)
 general_chain = general_prompt | llm | StrOutputParser()
 
-# --- UPDATED SYNTHESIS PROMPT ---
+# --- SYNTHESIS PROMPT ---
 SYNTHESIS_PROMPT_TEMPLATE = """
 You are a helpful AI sales assistant for SLT-MOBITEL. 
 
@@ -287,7 +400,9 @@ Your job is to relay this information to the user naturally, clearly, and accura
 **CRITICAL RULES:**
 1. **Present the Data:** If the Context contains a list of products, format them nicely with bullet points. Include the product name, the price (Rs.), and format the URL as a markdown link.
 2. **Order Form Signal:** ONLY if the Context contains the exact word 'order_form', you should reply with: "I can help you place an order for that. Please confirm the details below."
-3. **No Inventions:** Do NOT make up products, prices, or URLs. Rely ONLY on the provided context.
+3. **Order Statuses:** If the context contains the user's order history, summarize it clearly and politely, highlighting the Order ID, Status, and Date.
+4. **Order Actions:** If the context contains a system action result about a cancellation, inform the user whether it was successful or failed based strictly on that context.
+5. **No Inventions:** Do NOT make up products, prices, or URLs. Rely ONLY on the provided context.
 
 Chat History:
 {chat_history}
@@ -347,7 +462,7 @@ def generate_response(state: AgentState) -> AgentState:
             "chat_history": history_str 
         })
         
-        # --- ORDER FORM FORCE (Python side only) ---
+        # --- ORDER FORM FORCE ---
         order_signal = next((step for step in intermediate_steps if isinstance(step, dict) and step.get("type") == "order_form"), None)
         
         if order_signal:
@@ -355,20 +470,21 @@ def generate_response(state: AgentState) -> AgentState:
             req_id = order_signal.get("request_id", "req_000")
             prefill = order_signal.get("prefill_product", "")
             
-            # Append signal cleanly
             final_answer += f"\n\n[SHOW_ORDER_FORM:{req_id}|{prefill}]"
 
     logger.info(f"Generated final answer: {final_answer}")
     updated_history = chat_history + [HumanMessage(content=state.get("original_question", question)), AIMessage(content=final_answer)]
     return {"generation": final_answer, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
 
-# --- GRAPH BUILD (Unchanged) ---
+# --- GRAPH BUILD  ---
 workflow = StateGraph(AgentState)
 workflow.add_node("rewrite", rewrite_query)
 workflow.add_node("router", route_query)
 workflow.add_node("query_neo4j", query_graph_db)
 workflow.add_node("query_vector", query_vector_db)
 workflow.add_node("prepare_order", prepare_order_form_response)
+workflow.add_node("check_order", check_order_status_node)
+workflow.add_node("cancel_order", cancel_order_node)
 workflow.add_node("generate", generate_response)
 workflow.set_entry_point("rewrite")
 workflow.add_edge("rewrite", "router") 
@@ -376,12 +492,16 @@ def decide_next_node(state: AgentState):
     if state['route'] == "neo4j": return "query_neo4j"
     elif state['route'] == "vector": return "query_vector"
     elif state['route'] == "order_form": return "prepare_order" 
+    elif state['route'] == "check_order_status": return "check_order"
+    elif state['route'] == "cancel_order": return "cancel_order"
     elif state['route'] == "general": return "generate"  
     else: return END
-workflow.add_conditional_edges("router", decide_next_node, {"query_neo4j":"query_neo4j", "query_vector":"query_vector", "prepare_order":"prepare_order", "generate":"generate", END:END})
+workflow.add_conditional_edges("router", decide_next_node, {"query_neo4j":"query_neo4j", "query_vector":"query_vector", "prepare_order":"prepare_order","check_order": "check_order", "cancel_order": "cancel_order", "generate":"generate", END:END})
 workflow.add_edge("query_neo4j", "generate")
 workflow.add_edge("query_vector", "generate")
 workflow.add_edge("prepare_order", "generate")
+workflow.add_edge("check_order", "generate")
+workflow.add_edge("cancel_order", "generate")
 workflow.add_edge("generate", END)
 app = workflow.compile()
 logger.info("Graph compiled successfully!")
