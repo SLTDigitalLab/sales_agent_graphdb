@@ -26,6 +26,8 @@ backend/chroma_data/
 backend/products.csv
 # Scraper cache (if any)
 .wdm/
+# Semantic Cache folder (ChromaDB internal segments)
+backend/chroma_cache_data/
 
 # --- Database Volumes ---
 backend/postgres_data/

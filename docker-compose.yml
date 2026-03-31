@@ -1,4 +1,11 @@
 services:
+  # REDIS Service
+  redis:
+    image: redis:alpine
+    container_name: agent_redis
+    ports:
+      - "6379:6379"
+    restart: always
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
@@ -26,6 +33,7 @@ services:
       - CHROMA_PERSIST_DIR=/app/chroma_data
       - DATA_DIR=/app/data
       - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./backend:/app
       - /app/venv
@@ -33,6 +41,7 @@ services:
     command: ["sh", "-c", "alembic upgrade head && uvicorn src.main:api --host 0.0.0.0 --port 8000 --reload"]
     depends_on:
       - postgres
+      - redis
     restart: always
 
   # Frontend (Vite Development)

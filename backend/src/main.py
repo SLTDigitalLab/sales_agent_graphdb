@@ -19,8 +19,6 @@ load_dotenv()
 Base.metadata.create_all(bind=engine)
 logger.info("Database tables created (if they didn't exist).")
 
-from .api.services.chat_service import chat_histories 
-
 # Importing Routers
 from .api.routers import v1_chat, db_utils, core, neo4j_utils, admin, email, neo4j_products, auth, orders, products
 

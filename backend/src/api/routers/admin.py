@@ -7,6 +7,7 @@ from src.api.services.scraper_runner import run_general_scraping, run_product_sc
 from src.api.services import db_service, neo4j_service
 from src.api.deps import get_current_user, get_current_admin
 from src.api.schemas import ProductCreate, ProductUpdate, ProductOut, OrderOut, OrderStatusUpdate, CustomerOut
+from src.api.services.semantic_cache import clear_semantic_cache
 
 # IMPORT LOGGER
 from src.utils.logging_config import get_logger
@@ -125,6 +126,7 @@ async def ingest_neo4j_data():
     logger.info("--- Admin API: Received request to ingest Neo4j data ---")
     try:
         count = neo4j_service.run_neo4j_ingestion()
+        clear_semantic_cache()
         return {
             "message": "Neo4j ingestion successful.",
             "processed_count": count
@@ -139,6 +141,7 @@ async def ingest_chroma_data():
     logger.info("--- Admin API: Received request to ingest ChromaDB data ---")
     try:
         items_added = db_service.run_chroma_ingestion()
+        clear_semantic_cache()
         return {
             "message": "ChromaDB ingestion successful.",
             "items_added": items_added
@@ -204,6 +207,7 @@ async def create_new_product(product_data: ProductCreate):
         
         # 2. Sync to Neo4j Knowledge Graph
         neo4j_service.sync_single_product(new_product)
+        clear_semantic_cache()
         
         return new_product
     except Exception as e:
@@ -230,6 +234,7 @@ async def update_product_by_sku(sku: str, update_data: ProductUpdate):
         # 2. Sync to Neo4j (Sales Agent Knowledge)
         # The Neo4j service will use MERGE on the SKU to update the node
         neo4j_service.sync_single_product(updated_product)
+        clear_semantic_cache()
         
         return updated_product
     except Exception as e:
@@ -247,6 +252,7 @@ async def delete_product_by_sku(sku: str):
         
         # Delete from Neo4j
         neo4j_service.delete_product_node(sku)
+        clear_semantic_cache()
         
         return {"message": f"Product {sku} successfully removed."}
     except Exception as e:
