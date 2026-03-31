@@ -7,6 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langgraph.graph import StateGraph, END
 import httpx 
+from src.api.services.semantic_cache import check_semantic_cache, add_to_semantic_cache
 
 # IMPORT LOGGER
 from src.utils.logging_config import get_logger
@@ -33,6 +34,7 @@ class AgentState(TypedDict):
     intermediate_steps: list 
     route: str
     user_id: Optional[int]
+    cached_response: Optional[str]
 
 logger.info("Initial setup complete. AgentState defined.")
 
@@ -46,6 +48,7 @@ formulate a standalone question/statement which can be understood without the ch
 2. **Preserve Intent:** - If the user asks a question ("What is the price?"), keep it as a question ("What is the price of X?").
    - If the user states an ACTION ("I want to buy it", "Order this"), keep it as an ACTION ("I want to order X"). 
    - **DO NOT** change an order request into a "How to" question.
+3. **DO NOT Rewrite Small Talk:** If the user input is a simple greeting ("hi", "hello"), an acknowledgment ("ok", "thanks", "got it"), or general small talk, DO NOT rewrite it. Return the exact original input.
 
 Chat History:
 {chat_history}
@@ -270,6 +273,14 @@ def route_query(state: AgentState) -> AgentState:
     route_decision = response_json.get("route", "vector_db")
     logger.info(f"Routing decision: {route_decision}")
 
+    # Check Semantic Cache for safe routes 
+    if route_decision in ["graph_db", "vector_db"]:
+        # Apply the 0.90 threshold here
+        cached_answer = check_semantic_cache(question, threshold=0.85)
+        if cached_answer:
+            return {"route": "cache_hit", "cached_response": cached_answer, "intermediate_steps": []}
+
+    # Standard routing
     if route_decision == "graph_db": return {"route": "neo4j", "intermediate_steps": []}
     elif route_decision == "vector_db": return {"route": "vector", "intermediate_steps": []}
     elif route_decision == "order_form": return {"route": "order_form", "intermediate_steps": []} 
@@ -374,6 +385,17 @@ def cancel_order_node(state: AgentState) -> AgentState:
             "context": f"System action result: {db_result['message']}. Relay this clearly to the user."
         }]
     }
+def cache_hit_node(state: AgentState) -> AgentState:
+    """Fast-pass node that returns the cached response directly."""
+    logger.info("---NODE: cache_hit_node---")
+    answer = state.get("cached_response", "Error retrieving cache.")
+    
+    # Update history and return immediately
+    updated_history = state.get("chat_history", []) + [
+        HumanMessage(content=state.get("original_question", state["question"])), 
+        AIMessage(content=answer)
+    ]
+    return {"generation": answer, "chat_history": updated_history}
 
 # --- SYNTHESIS & GENERATION ---
 GENERAL_CONVERSATION_TEMPLATE = """
@@ -462,6 +484,29 @@ def generate_response(state: AgentState) -> AgentState:
             "chat_history": history_str 
         })
         
+        # --- CACHING LOGIC --- 
+        
+        # 1. Only allow Graph DB or Vector DB routes
+        is_knowledge_route = original_route in ["neo4j", "vector"]
+        
+        # 2. Check if the databases actually handed us real data (Passed the DB Threshold)
+        db_returned_valid_data = False
+        
+        for step in intermediate_steps:
+            if isinstance(step, dict) and step.get("result"):
+                result_data = str(step.get("result")).strip()
+                invalid_returns = ["None", "[]", "", "No result found", "No relevant information found."]
+                if result_data not in invalid_returns and "error" not in step:
+                    db_returned_valid_data = True
+
+        # 3. Final Check: Cache ONLY if the DB passed its threshold and returned real data
+        if is_knowledge_route and db_returned_valid_data:
+            logger.info(f"✅ Saving standalone query to cache: {question}")
+            # Use state["question"] because it is the standalone version from rewrite_query
+            add_to_semantic_cache(question, final_answer)
+        else:
+            logger.info("⚠️ Skipping cache: No valid database content found.")
+            
         # --- ORDER FORM FORCE ---
         order_signal = next((step for step in intermediate_steps if isinstance(step, dict) and step.get("type") == "order_form"), None)
         
@@ -486,6 +531,7 @@ workflow.add_node("prepare_order", prepare_order_form_response)
 workflow.add_node("check_order", check_order_status_node)
 workflow.add_node("cancel_order", cancel_order_node)
 workflow.add_node("generate", generate_response)
+workflow.add_node("cache_hit", cache_hit_node)
 workflow.set_entry_point("rewrite")
 workflow.add_edge("rewrite", "router") 
 def decide_next_node(state: AgentState):
@@ -494,14 +540,16 @@ def decide_next_node(state: AgentState):
     elif state['route'] == "order_form": return "prepare_order" 
     elif state['route'] == "check_order_status": return "check_order"
     elif state['route'] == "cancel_order": return "cancel_order"
+    elif state['route'] == "cache_hit": return "cache_hit"
     elif state['route'] == "general": return "generate"  
     else: return END
-workflow.add_conditional_edges("router", decide_next_node, {"query_neo4j":"query_neo4j", "query_vector":"query_vector", "prepare_order":"prepare_order","check_order": "check_order", "cancel_order": "cancel_order", "generate":"generate", END:END})
+workflow.add_conditional_edges("router", decide_next_node, {"query_neo4j":"query_neo4j", "query_vector":"query_vector", "prepare_order":"prepare_order","check_order": "check_order", "cancel_order": "cancel_order", "cache_hit": "cache_hit", "generate":"generate", END:END})
 workflow.add_edge("query_neo4j", "generate")
 workflow.add_edge("query_vector", "generate")
 workflow.add_edge("prepare_order", "generate")
 workflow.add_edge("check_order", "generate")
 workflow.add_edge("cancel_order", "generate")
+workflow.add_edge("cache_hit", END)
 workflow.add_edge("generate", END)
 app = workflow.compile()
 logger.info("Graph compiled successfully!")
