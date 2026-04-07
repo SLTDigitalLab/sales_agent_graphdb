@@ -1,5 +1,5 @@
 import os
-from typing import TypedDict, List, Optional
+from typing import TypedDict, List, Optional, Any
 from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
@@ -37,6 +37,50 @@ class AgentState(TypedDict):
     cached_response: Optional[str]
 
 logger.info("Initial setup complete. AgentState defined.")
+
+# GUARDRAIL: INPUT FIREWALL
+def input_guardrail_node(state: AgentState) -> AgentState:
+    logger.info("---NODE: input_guardrail---")
+    question = state["question"]
+    
+    guardrails_config = {
+        "version": 1,
+        "input": {
+            "version": 1,
+            "guardrails": [
+                {
+                    "name": "Moderation",
+                    "config": {} 
+                }
+            ]
+        }
+    }
+    
+    try:
+        from guardrails import GuardrailsOpenAI
+        
+        # Initialize the secure client
+        client = GuardrailsOpenAI(api_key=OPENAI_API_KEY, config=guardrails_config)
+        
+        client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": question}],
+            max_tokens=1
+        )
+        
+    except ImportError:
+        logger.warning("⚙️ openai-guardrails not installed yet. Skipping scan.")
+    except Exception as e:
+        if type(e).__name__ == "GuardrailTripwireTriggered":
+            logger.warning(f"🚨 SECURITY ALERT: OpenAI Guardrails blocked the input! Details: {e}")
+            return {
+                "route": "rejected", 
+                "generation": "Security Alert: Your request has been blocked because it violates our safety and interaction policies."
+            }
+        else:
+            logger.error(f"⚠️ Guardrail API failed or timed out. Skipping scan to maintain uptime. Error: {e}")
+            
+    return {"original_question": question}
 
 # --- Query Rewriter ---
 REWRITE_PROMPT_TEMPLATE = """
@@ -77,7 +121,6 @@ def rewrite_query(state: AgentState) -> AgentState:
         return {"original_question": question}
 
 # --- NODES ---
-
 def query_graph_db(state: AgentState) -> AgentState:
     logger.info("---NODE: query_graph_db (calling API)---")
     question = state["question"]
@@ -246,7 +289,7 @@ def prepare_order_form_response(state: AgentState) -> AgentState:
     intermediate_steps.append(form_signal)
     return {"intermediate_steps": intermediate_steps}
 
-# --- ROUTER LOGIC ---
+# STAGE 2 GUARDRAIL: NATIVE ROUTER
 ROUTER_PROMPT_TEMPLATE = """
 You are an expert router agent.
 Output JSON with keys: "reasoning" and "route".
@@ -268,14 +311,17 @@ def route_query(state: AgentState) -> AgentState:
     logger.info("---NODE: route_query---")
     question = state["question"]
     state["intermediate_steps"] = []
-
-    response_json = router_chain.invoke({"question": question})
-    route_decision = response_json.get("route", "vector_db")
-    logger.info(f"Routing decision: {route_decision}")
+    
+    try:
+        response_json = router_chain.invoke({"question": question})
+        route_decision = response_json.get("route", "vector_db")
+        logger.info(f"Routing decision: {route_decision}")
+    except Exception as e:
+        logger.error(f"Router validation error, falling back to vector_db: {e}")
+        route_decision = "vector_db"
 
     # Check Semantic Cache for safe routes 
     if route_decision in ["graph_db", "vector_db"]:
-        # Apply the 0.90 threshold here
         cached_answer = check_semantic_cache(question, threshold=0.85)
         if cached_answer:
             return {"route": "cache_hit", "cached_response": cached_answer, "intermediate_steps": []}
@@ -385,6 +431,7 @@ def cancel_order_node(state: AgentState) -> AgentState:
             "context": f"System action result: {db_result['message']}. Relay this clearly to the user."
         }]
     }
+
 def cache_hit_node(state: AgentState) -> AgentState:
     """Fast-pass node that returns the cached response directly."""
     logger.info("---NODE: cache_hit_node---")
@@ -445,7 +492,10 @@ def generate_response(state: AgentState) -> AgentState:
     chat_history = state.get("chat_history", [])
     original_route = state.get("route", "")
     
-    response = ""
+    # HANDLE REJECTED REQUESTS IMMEDIATELY
+    if original_route == "rejected":
+        updated_history = chat_history + [HumanMessage(content=question), AIMessage(content=state.get("generation", "Request blocked by security policies."))]
+        return {"chat_history": updated_history}
 
     # --- Handle General Questions ---
     if original_route == "general":
@@ -507,7 +557,7 @@ def generate_response(state: AgentState) -> AgentState:
         else:
             logger.info("⚠️ Skipping cache: No valid database content found.")
             
-        # --- ORDER FORM FORCE ---
+        # ORDER FORM FORCE
         order_signal = next((step for step in intermediate_steps if isinstance(step, dict) and step.get("type") == "order_form"), None)
         
         if order_signal:
@@ -521,8 +571,11 @@ def generate_response(state: AgentState) -> AgentState:
     updated_history = chat_history + [HumanMessage(content=state.get("original_question", question)), AIMessage(content=final_answer)]
     return {"generation": final_answer, "chat_history": updated_history, "intermediate_steps": intermediate_steps}
 
-# --- GRAPH BUILD  ---
+# GRAPH BUILD 
 workflow = StateGraph(AgentState)
+
+# Add all nodes
+workflow.add_node("input_guardrail", input_guardrail_node)
 workflow.add_node("rewrite", rewrite_query)
 workflow.add_node("router", route_query)
 workflow.add_node("query_neo4j", query_graph_db)
@@ -530,10 +583,26 @@ workflow.add_node("query_vector", query_vector_db)
 workflow.add_node("prepare_order", prepare_order_form_response)
 workflow.add_node("check_order", check_order_status_node)
 workflow.add_node("cancel_order", cancel_order_node)
+workflow.add_node("cache_hit", cache_hit_node) 
 workflow.add_node("generate", generate_response)
-workflow.add_node("cache_hit", cache_hit_node)
-workflow.set_entry_point("rewrite")
+
+# Guardrail entry point
+workflow.set_entry_point("input_guardrail")
+
+# Safety Check Conditional Routing
+def check_input_safety(state: AgentState):
+    if state.get("route") == "rejected":
+        return "generate"
+    return "rewrite"
+
+workflow.add_conditional_edges("input_guardrail", check_input_safety, {
+    "rewrite": "rewrite",
+    "generate": "generate"
+})
+
 workflow.add_edge("rewrite", "router") 
+
+# Core Navigation Router
 def decide_next_node(state: AgentState):
     if state['route'] == "neo4j": return "query_neo4j"
     elif state['route'] == "vector": return "query_vector"
@@ -543,7 +612,19 @@ def decide_next_node(state: AgentState):
     elif state['route'] == "cache_hit": return "cache_hit"
     elif state['route'] == "general": return "generate"  
     else: return END
-workflow.add_conditional_edges("router", decide_next_node, {"query_neo4j":"query_neo4j", "query_vector":"query_vector", "prepare_order":"prepare_order","check_order": "check_order", "cancel_order": "cancel_order", "cache_hit": "cache_hit", "generate":"generate", END:END})
+
+workflow.add_conditional_edges("router", decide_next_node, {
+    "query_neo4j": "query_neo4j", 
+    "query_vector": "query_vector", 
+    "prepare_order": "prepare_order",
+    "check_order": "check_order", 
+    "cancel_order": "cancel_order", 
+    "cache_hit": "cache_hit", 
+    "generate": "generate", 
+    END: END
+})
+
+# Final Pathways
 workflow.add_edge("query_neo4j", "generate")
 workflow.add_edge("query_vector", "generate")
 workflow.add_edge("prepare_order", "generate")
@@ -551,5 +632,6 @@ workflow.add_edge("check_order", "generate")
 workflow.add_edge("cancel_order", "generate")
 workflow.add_edge("cache_hit", END)
 workflow.add_edge("generate", END)
+
 app = workflow.compile()
 logger.info("Graph compiled successfully!")
