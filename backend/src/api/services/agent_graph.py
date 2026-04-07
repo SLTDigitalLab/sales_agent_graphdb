@@ -43,43 +43,25 @@ def input_guardrail_node(state: AgentState) -> AgentState:
     logger.info("---NODE: input_guardrail---")
     question = state["question"]
     
-    guardrails_config = {
-        "version": 1,
-        "input": {
-            "version": 1,
-            "guardrails": [
-                {
-                    "name": "Moderation",
-                    "config": {} 
-                }
-            ]
-        }
-    }
-    
     try:
-        from guardrails import GuardrailsOpenAI
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
         
-        # Initialize the secure client
-        client = GuardrailsOpenAI(api_key=OPENAI_API_KEY, config=guardrails_config)
+        response = client.moderations.create(input=question)
+        result = response.results[0]
         
-        client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": question}],
-            max_tokens=1
-        )
-        
-    except ImportError:
-        logger.warning("⚙️ openai-guardrails not installed yet. Skipping scan.")
-    except Exception as e:
-        if type(e).__name__ == "GuardrailTripwireTriggered":
-            logger.warning(f"🚨 SECURITY ALERT: OpenAI Guardrails blocked the input! Details: {e}")
+        if result.flagged:
+            flagged_categories = [cat for cat, flagged in result.categories.model_dump().items() if flagged]
+            logger.warning(f"🚨 SECURITY ALERT: Native OpenAI Moderation flagged the input! Categories: {flagged_categories}")
+            
             return {
                 "route": "rejected", 
                 "generation": "Security Alert: Your request has been blocked because it violates our safety and interaction policies."
             }
-        else:
-            logger.error(f"⚠️ Guardrail API failed or timed out. Skipping scan to maintain uptime. Error: {e}")
             
+    except Exception as e:
+        logger.error(f"⚠️ Moderation API failed. Skipping scan to maintain uptime. Error: {e}")
+        
     return {"original_question": question}
 
 # --- Query Rewriter ---
