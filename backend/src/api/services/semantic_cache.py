@@ -5,15 +5,20 @@ from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Define where to store the cache data locally
-CACHE_DIR = os.path.join(os.getcwd(), "chroma_cache_data")
-os.makedirs(CACHE_DIR, exist_ok=True)
+# --- THE FIX: Point EXACTLY to the shared chroma_data folder ---
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(script_dir, '..', '..', '..')
+CHROMA_PERSIST_DIR = os.path.join(project_root, 'chroma_data')
 
-# Initialize Chroma and Embeddings
-chroma_client = chromadb.PersistentClient(path=CACHE_DIR)
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small") # Adjust model if needed
+# Ensure the directory exists (It will just hook into the existing one)
+os.makedirs(CHROMA_PERSIST_DIR, exist_ok=True)
 
-# Use cosine similarity (default is L2). Cosine is generally better for semantic text comparison.
+# Initialize ONE unified PersistentClient pointing to the shared folder
+chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
+
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+
+# Use cosine similarity. This collection sits safely next to 'enterprise_data'
 cache_collection = chroma_client.get_or_create_collection(
     name="semantic_response_cache",
     metadata={"hnsw:space": "cosine"} 
@@ -25,22 +30,17 @@ def check_semantic_cache(question: str, threshold: float = 0.85) -> str | None:
     Returns the answer ONLY if (1 - distance) >= threshold.
     """
     try:
-        # 1. Embed the incoming question
         query_embedding = embeddings.embed_query(question)
         
-        # 2. Search cache
         results = cache_collection.query(
             query_embeddings=[query_embedding],
             n_results=1,
             include=["metadatas", "distances"]
         )
 
-        # 3. Check if we have any results
         if not results or not results["distances"] or len(results["distances"][0]) == 0:
             return None
 
-        # 4. Calculate Similarity Score
-        # In Cosine Space: Score 1.0 = identical, 0.0 = orthogonal
         distance = results["distances"][0][0]
         similarity_score = 1 - distance 
 
@@ -58,12 +58,11 @@ def check_semantic_cache(question: str, threshold: float = 0.85) -> str | None:
         return None
     
 def add_to_semantic_cache(query: str, response: str):
-    """Saves the question and response. Uses upsert to avoid duplicate IDs."""
+    """Saves the question and response using upsert to avoid duplicate IDs."""
     try:
         query_embedding = embeddings.embed_query(query)
         doc_id = f"cache_{hash(query)}"
         
-        # Use upsert instead of add to prevent "ID already exists" errors
         cache_collection.upsert(
             ids=[doc_id],
             embeddings=[query_embedding],
@@ -75,18 +74,18 @@ def add_to_semantic_cache(query: str, response: str):
         logger.error(f"Error saving to semantic cache: {e}")
 
 def clear_semantic_cache():
-    """Wipes the entire semantic cache to prevent stale data."""
+    """Wipes ONLY the semantic cache collection to prevent stale data."""
     global cache_collection
     try:
-        # Delete the existing cache collection
+        # Safely delete ONLY the cache collection, keeping enterprise_data intact
         chroma_client.delete_collection(name="semantic_response_cache")
         
-        # Recreate a fresh, empty collection with the same settings
+        # Recreate a fresh, empty collection
         cache_collection = chroma_client.get_or_create_collection(
             name="semantic_response_cache",
             metadata={"hnsw:space": "cosine"} 
         )
-        logger.info(" Semantic Cache cleared after data ingestion.")
+        logger.info("🗑️ Semantic Cache cleared (Collection cleanly recreated).")
         return True
     except Exception as e:
         logger.error(f"Error clearing semantic cache: {e}")
